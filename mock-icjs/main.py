@@ -63,7 +63,8 @@ def list_cases():
             if os.path.isfile(manifest_path):
                 try:
                     m = _manifest(case_id)
-                    out.append({"case_id": case_id, "title": m.get("title", case_id)})
+                    out.append({"case_id": case_id, "title": m.get("title", case_id),
+                                "state": m.get("state", ""), "district": m.get("district", "")})
                 except HTTPException:
                     continue
     return {"cases": out}

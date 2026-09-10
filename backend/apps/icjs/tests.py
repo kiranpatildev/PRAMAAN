@@ -52,10 +52,10 @@ class IcjsImportTests(TestCase):
     def test_available_cases_proxies(self):
         c = self._client(self.inv)
         with mock.patch("apps.icjs.views.icjs_client.list_cases",
-                        return_value=[{"case_id": "CASE-2026-001", "title": "T"}]):
+                        return_value=[{"case_id": "MH-2026-001", "title": "T"}]):
             resp = c.get("/api/icjs/available-cases/")
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data["cases"][0]["case_id"], "CASE-2026-001")
+        self.assertEqual(resp.data["cases"][0]["case_id"], "MH-2026-001")
 
     def test_available_cases_service_down(self):
         c = self._client(self.inv)
@@ -66,7 +66,7 @@ class IcjsImportTests(TestCase):
 
     def test_permissions(self):
         inv_c, viewer_c, out_c = self._client(self.inv), self._client(self.viewer), self._client(self.outsider)
-        body = {"external_case_id": "CASE-2026-001"}
+        body = {"external_case_id": "MH-2026-001"}
         self.assertEqual(viewer_c.post(f"/api/cases/{self.case.id}/icjs-import/", body).status_code, 403)
         self.assertEqual(out_c.post(f"/api/cases/{self.case.id}/icjs-import/", body).status_code, 403)
         self.assertEqual(inv_c.post(f"/api/cases/{self.case.id}/icjs-import/", {}).status_code, 400)
@@ -77,7 +77,7 @@ class IcjsImportTests(TestCase):
         with list_m, dl_m, up_m, ex_m, down_m, \
                 mock.patch("apps.icjs.views.broadcast") as bc:
             resp = c.post(f"/api/cases/{self.case.id}/icjs-import/",
-                          {"external_case_id": "CASE-2026-001"})
+                          {"external_case_id": "MH-2026-001"})
         self.assertEqual(resp.status_code, 200, resp.content[:500])
         self.assertEqual(resp.data["status"], "success")
         self.assertEqual((resp.data["files_imported"], resp.data["files_failed"]), (2, 0))
@@ -89,7 +89,7 @@ class IcjsImportTests(TestCase):
         self.assertIn("icjs_import", actions)
         self.assertNotIn("uploaded", {a for a in actions if a in ("uploaded",)})
         first = ChainOfCustody.objects.filter(evidence=evs[0], action="icjs_import").first()
-        self.assertEqual(first.details["external_case_id"], "CASE-2026-001")
+        self.assertEqual(first.details["external_case_id"], "MH-2026-001")
         self.assertEqual(first.details["source"], "ICJS mock")
         # Import log + pipeline evidence (regex phone entity from the CSV).
         log = IcjsImportLog.objects.get(pk=resp.data["import_log_id"])
@@ -115,7 +115,7 @@ class IcjsImportTests(TestCase):
              mock.patch("apps.evidence.services.storage.object_exists", return_value=True), \
              mock.patch("apps.evidence.services.storage.download_bytes", return_value=CSV_BYTES):
             resp = c.post(f"/api/cases/{self.case.id}/icjs-import/",
-                          {"external_case_id": "CASE-2026-001"})
+                          {"external_case_id": "MH-2026-001"})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data["status"], "partial")
         self.assertEqual((resp.data["files_imported"], resp.data["files_failed"]), (1, 1))
@@ -138,7 +138,7 @@ class IcjsImportTests(TestCase):
         with mock.patch("apps.icjs.views.icjs_client.list_files",
                         side_effect=IcjsServiceError("connection refused")):
             resp = c.post(f"/api/cases/{self.case.id}/icjs-import/",
-                          {"external_case_id": "CASE-2026-001"})
+                          {"external_case_id": "MH-2026-001"})
         self.assertEqual(resp.status_code, 502)
         self.assertEqual(Evidence.objects.filter(case=self.case).count(), 0)
         log = IcjsImportLog.objects.get(pk=resp.data["import_log_id"])

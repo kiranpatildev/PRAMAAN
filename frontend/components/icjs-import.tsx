@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
-type Available = { case_id: string; title: string };
+type Available = { case_id: string; title: string; state?: string; district?: string };
 type Step = { key: string; label: string; state: "active" | "done" | "error" };
 
 function socketUrl(): string | null {
@@ -113,7 +113,7 @@ export function IcjsImportPanel({ caseId, onImported }: { caseId: string; onImpo
           onChange={(e) => setSelected(e.target.value)} disabled={busy}>
           <option value="">{t("icjs.pick", "Pick an ICJS case…")}</option>
           {options.map((o) => (
-            <option key={o.case_id} value={o.case_id}>{o.case_id} — {o.title}</option>
+            <option key={o.case_id} value={o.case_id}>{o.case_id} — {o.title}{o.state ? ` (${o.state}${o.district ? ", " + o.district : ""})` : ""}</option>
           ))}
         </select>
         <button className="btn" disabled={busy || !selected} onClick={runImport}>
