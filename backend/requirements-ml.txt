@@ -1,0 +1,22 @@
+# Heavy ML dependencies — installed in ML-enabled builds only (Phase 2+).
+# The base backend image stays light; OCR/NLP services degrade gracefully
+# (status `unavailable`) when these packages are absent.
+#
+# Build with ML support:
+#   pip install -r requirements.txt -r requirements-ml.txt
+#
+# NOTE: paddlepaddle CPU wheel is large (~500MB+). Pinned versions are
+# validated for Python 3.12 CPU.
+
+# OCR: scanned documents / FIR ingestion (PaddleOCR + CPU inference)
+paddlepaddle>=3.0,<3.2
+paddleocr>=2.7
+
+# NLP / NER (Phase 3): spaCy + Transformers + Indic models (AI4Bharat IndicBERT/IndicXlit)
+spacy>=3.7
+transformers>=4.40
+sentencepiece>=0.2
+torch>=2.3  # CPU wheel; prefer --index-url https://download.pytorch.org/whl/cpu
+
+# ML analytics (Phase 5): scikit-learn pulls scipy/numpy
+scikit-learn>=1.5

@@ -1,0 +1,28 @@
+Django>=4.2,<5.1
+djangorestframework>=3.14
+djangorestframework-simplejwt>=5.3
+django-cors-headers>=4.3
+django-filter>=23.5
+dj-database-url>=2.1
+psycopg[binary]>=3.1
+celery[redis]>=5.3
+redis>=5.0
+boto3>=1.34
+cryptography>=42.0
+# Phase 7: court-ready PDF evidence packages.
+reportlab>=4.0
+channels>=4.1
+channels-redis>=4.2
+daphne>=4.1
+drf-spectacular>=0.27
+pypdf>=4.0
+# Phase 6: RAG retrieval (pgvector) + Gemini generation (google-generativeai).
+# Embeddings are key-optional: without GEMINI_API_KEY the pipeline indexes
+# chunks for keyword retrieval and copilot answers extractively (honestly labeled).
+pgvector>=0.3
+google-genai>=1.0
+# Phase 3: temporal knowledge graph + extraction. neo4j driver is pure-python
+# and light. spacy (en_core_web_sm) powers NER with regex fallback when the
+# model is absent; HF/IndicBERT stay in requirements-ml.txt behind lazy imports.
+neo4j>=5.20
+spacy>=3.7
