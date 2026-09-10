@@ -1,0 +1,158 @@
+# PRAMAAN Phase 1 — one-command local/demo spin-up.
+#   docker compose up --build
+# Frontend -> http://localhost:8080 (via nginx)
+# Backend  -> http://localhost:8080/api/ (proxied) or :8000 directly
+# Neo4j    -> http://localhost:7474  (bolt://localhost:7687)
+# MinIO    -> http://localhost:9001  (api :9000)
+
+x-backend-env: &backend-env
+  DEBUG: "1"
+  DJANGO_SETTINGS_MODULE: config.settings
+  SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
+  DATABASE_URL: postgres://pramaan:pramaan@db:5432/pramaan
+  REDIS_URL: redis://redis:6379/0
+  NEO4J_URI: bolt://neo4j:7687
+  NEO4J_USER: neo4j
+  NEO4J_PASSWORD: ${NEO4J_PASSWORD:-pramaan-neo4j}
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-pramaan}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-pramaan123}
+  MINIO_BUCKET: evidence
+  MINIO_SECURE: "0"
+  CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8080
+
+services:
+  db:
+    # PostGIS (base image) + pgvector (vendored .debs, installed offline —
+    # see infra/postgres/Dockerfile). Volume pgdata survives image swaps.
+    build: ./infra/postgres
+    environment:
+      POSTGRES_USER: pramaan
+      POSTGRES_PASSWORD: pramaan
+      POSTGRES_DB: pramaan
+    # NOTE: host port is 5433 (not 5432) to avoid clashing with a locally
+    # installed Postgres. Containers still talk to db:5432 internally.
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pramaan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  neo4j:
+    image: neo4j:5.21-community
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-pramaan-neo4j}
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
+      NEO4J_apoc_export_file_enabled: "true"
+      NEO4J_apoc_import_file_enabled: "true"
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4jdata:/data
+      - neo4jlogs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    # NOTE: host port 6380 — a local redis-server may already own 6379.
+    ports:
+      - "6380:6379"
+    volumes:
+      - redisdata:/data
+
+  minio:
+    image: minio/minio:RELEASE.2024-06-06T09-36-42Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-pramaan}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-pramaan123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  backend:
+    build: ./backend
+    # daphne serves ASGI (HTTP + WebSocket alerts); runserver cannot do WS.
+    command: sh -c "python manage.py migrate && python manage.py seed_demo --cases 6 || true; daphne -b 0.0.0.0 -p 8000 config.asgi:application"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *backend-env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: celery -A config worker -l info
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - redis
+      - db
+
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080/api
+    ports:
+      - "3000:3000"
+    # NOTE: mount source dirs only (never /app itself): overlaying /app would
+    # hide the image's node_modules/.next behind stale anonymous volumes and
+    # break the UI after any dependency change.
+    volumes:
+      - ./frontend/app:/app/app
+      - ./frontend/components:/app/components
+      - ./frontend/lib:/app/lib
+      - ./frontend/public:/app/public
+
+  mock-icjs:
+    # Synthetic stand-in for the external ICJS case-bundle API. Internal only:
+    # no host port is published, so (like a real government endpoint) only the
+    # Django backend talks to it, at http://mock-icjs:9090.
+    build: ./mock-icjs
+    expose:
+      - "9090"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9090/health', timeout=5)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  pgdata:
+  neo4jdata:
+  neo4jlogs:
+  redisdata:
+  miniodata:

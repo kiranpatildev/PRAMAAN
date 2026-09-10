@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+db.sqlite3
+node_modules/
+.next/
+pgdata/
+# Generated mock-ICJS case bundles (baked into the image by generate_cases.py)
+mock-icjs/cases/
+frontend/*.tsbuildinfo
+infra/postgres/debs/
