@@ -29,8 +29,10 @@ happens inside a case workbench (`/cases/[id]`).
 ## Permissions, concretely
 
 View = owner or assignee (any level). Edit = SHO, owner, or edit/admin
-assignment — required for uploads, confirms, tasks, comments, reports,
-rebuilds, geo-pinning. Outsider requests get 403 (covered by tests).
+assignment — required for tasks, comments, reports, rebuilds,
+geo-pinning. Uploads and entity/relation verification additionally require
+`user_can_contribute_case` (assigned investigator, never SHO). Outsider
+requests get 403 (covered by tests).
 
 ## Field realities
 

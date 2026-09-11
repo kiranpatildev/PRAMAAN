@@ -1,10 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { AlertsBell } from "@/components/alerts-bell";
 import { LangProvider } from "@/lib/i18n";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { LangToggle } from "@/lib/i18n";
-import { HeaderNav } from "@/components/header-nav";
+import { AppShell } from "@/components/app-shell";
 import { OnlineBanner } from "@/components/online-status";
 
 export const metadata: Metadata = {
@@ -14,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0f1e",
+  themeColor: "#0b0f17",
   width: "device-width",
   initialScale: 1,
 };
@@ -27,28 +24,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" data-theme="dark">
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap"
+          rel="stylesheet"
+        />
       </head>
       <body>
         <LangProvider>
-          <div className="min-h-screen bg-ink-950">
-            <header className="border-b border-ink-700 bg-ink-900/80">
-              <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3">
-                <span className="text-lg font-bold tracking-wide">
-                  PRAMAAN <span className="text-accent text-sm font-normal">· network analysis</span>
-                </span>
-                <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-300">
-                  <HeaderNav />
-                  <span className="flex items-center gap-2">
-                    <LangToggle />
-                    <ThemeToggle />
-                    <AlertsBell />
-                  </span>
-                </nav>
-              </div>
-            </header>
+          <AppShell>
             <OnlineBanner />
-            <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
-          </div>
+            {children}
+          </AppShell>
         </LangProvider>
       </body>
     </html>

@@ -18,11 +18,17 @@ class CaseAssignmentSerializer(serializers.ModelSerializer):
 class CaseSerializer(serializers.ModelSerializer):
     assignments = CaseAssignmentSerializer(many=True, read_only=True)
     owner = UserSerializer(read_only=True)
+    entities_count = serializers.IntegerField(read_only=True, default=0)
+    evidence_count = serializers.IntegerField(read_only=True, default=0)
+    alerts_count = serializers.IntegerField(read_only=True, default=0)
+    relations_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Case
         fields = (
             "id", "fir_no", "title", "description", "status", "risk_level",
-            "station", "district", "owner", "assignments", "created_at", "updated_at",
+            "station", "district", "state", "owner", "assignments",
+            "entities_count", "evidence_count", "alerts_count",
+            "relations_count", "created_at", "updated_at",
         )
         read_only_fields = ("id", "owner", "created_at", "updated_at")

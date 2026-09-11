@@ -38,7 +38,12 @@ Transparent statistics, no training data: **hub_outlier** (degree z > 2,
 needs ≥4 nodes), **contact_burst** (≥3 edges sharing one `valid_from`
 date — high severity), **weak_evidence_community** (≥2 internal edges,
 mean confidence < 0.5 — a data-quality flag, not guilt). Each cites node
-refs + edge ids. sklearn/torch are documented swap-ins, not installed.
+refs + edge ids, and each now carries a `confidence` badge computed
+honestly from the same measurement: hub scales with distance past z=2
+(0.60→0.95 cap), burst with size past 3 edges (0.70→0.95 cap), weak
+community inverts mean edge confidence (floor 0.55). UI shows the badge
+with a "findings require verification" note. sklearn/torch are documented
+swap-ins, not installed.
 
 ## Cross-case (`GET …/cross-case/`)
 

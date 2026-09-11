@@ -25,6 +25,7 @@ class Case(models.Model):
     risk_level = models.CharField(max_length=16, default="low")  # low|medium|high — Phase 5 computes
     station = models.CharField(max_length=128, blank=True, default="")
     district = models.CharField(max_length=128, blank=True, default="")
+    state = models.CharField(max_length=128, blank=True, default="")
     owner = models.ForeignKey(User, on_delete=models.PROTECT, related_name="owned_cases")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

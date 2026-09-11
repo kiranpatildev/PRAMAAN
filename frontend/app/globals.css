@@ -2,19 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Theme tokens: dark command-center default, light for daytime briefings.
- * Components use tailwind dark utilities directly; the [data-theme="light"]
- * block below remaps the handful of shared tokens so the whole app flips. */
+/* PRAMAAN intelligence-workspace theme. Dark is the only target theme;
+ * the light toggle is retained for daytime briefings and remaps the
+ * shared tokens below. Canonical hexes live in lib/theme.ts. */
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0a0f1e;
-  --surface: #0f172a;
-  --surface-2: #1e293b;
-  --border: #334155;
-  --text: #f1f5f9;
-  --muted: #94a3b8;
-  --accent: #38bdf8;
+  --bg: #0b0f17;
+  --surface: #121826;
+  --surface-2: #1a2233;
+  --border: #1f2733;
+  --text: #e5e7eb;
+  --muted: #8b93a1;
+  --accent: #3b82f6;
 }
 
 [data-theme="light"] {
@@ -25,25 +25,41 @@
   --border: #cbd5e1;
   --text: #0f172a;
   --muted: #475569;
-  --accent: #0284c7;
+  --accent: #2563eb;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
+  font-family: Inter, "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   @apply antialiased;
 }
 
+.mono {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .card {
-  @apply rounded-xl border p-4 shadow;
+  @apply rounded-lg border p-5 shadow-none;
   background: var(--surface);
   border-color: var(--border);
 }
 
 .btn {
-  @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50;
   background: var(--accent);
-  color: #06121f;
+  color: #f8fafc;
+}
+
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50;
+  border-color: var(--border);
+  color: var(--text);
+  background: transparent;
+}
+
+.btn-ghost:hover {
+  border-color: var(--accent);
 }
 
 .input {
@@ -62,6 +78,20 @@ body {
   background: var(--surface-2);
 }
 
+/* Thin scrollbars for dense panels. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
 /* Light-theme remap of the shared dark utilities used across components. */
 [data-theme="light"] .bg-ink-950 { background-color: var(--bg) !important; }
 [data-theme="light"] .bg-ink-900 { background-color: var(--surface) !important; }
@@ -77,6 +107,6 @@ body {
 [data-theme="light"] .text-slate-500 { color: var(--muted) !important; }
 [data-theme="light"] .text-accent { color: var(--accent) !important; }
 [data-theme="light"] .bg-accent { background-color: var(--accent) !important; }
-[data-theme="light"] .bg-accent\/15 { background-color: rgb(2 132 199 / 0.12) !important; }
+[data-theme="light"] .bg-accent\/15 { background-color: rgb(37 99 235 / 0.12) !important; }
 [data-theme="light"] .hover\:border-accent:hover { border-color: var(--accent) !important; }
 [data-theme="light"] .hover\:text-accent:hover { color: var(--accent) !important; }

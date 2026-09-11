@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.cases.models import Case
-from apps.cases.permissions import user_can_edit_case, user_can_view_case
+from apps.cases.permissions import user_can_contribute_case, user_can_edit_case, user_can_view_case
 
 from .models import ExtractedEntity, ExtractedRelation, MergeStatus, MergeSuggestion, ReviewStatus
 from .serializers import (
@@ -56,8 +56,8 @@ def review_entities(request):
 @permission_classes([IsAuthenticated])
 def review_entity_decide(request, pk):
     ent = get_object_or_404(ExtractedEntity, pk=pk)
-    if not user_can_edit_case(request.user, ent.case):
-        return Response({"detail": "Forbidden."}, status=403)
+    if not user_can_contribute_case(request.user, ent.case):
+        return Response({"detail": "Only investigators assigned to this case can verify entities."}, status=403)
     decision = (request.data.get("decision") or request.query_params.get("decision") or "").lower()
     if decision not in ("confirm", "reject"):
         return Response({"detail": "decision must be confirm|reject"}, status=400)
@@ -85,8 +85,8 @@ def review_relations(request):
 @permission_classes([IsAuthenticated])
 def review_relation_decide(request, pk):
     rel = get_object_or_404(ExtractedRelation, pk=pk)
-    if not user_can_edit_case(request.user, rel.case):
-        return Response({"detail": "Forbidden."}, status=403)
+    if not user_can_contribute_case(request.user, rel.case):
+        return Response({"detail": "Only investigators assigned to this case can verify relations."}, status=403)
     decision = (request.data.get("decision") or "").lower()
     if decision not in ("confirm", "reject"):
         return Response({"detail": "decision must be confirm|reject"}, status=400)

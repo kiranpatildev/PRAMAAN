@@ -98,6 +98,8 @@ Django 4.2 + DRF, JWT-only auth (SimpleJWT: access 30 min, refresh 1 day),
 global `IsAuthenticated`, page size 20. RBAC lives in one module
 (`apps/cases/permissions.py`): `user_can_view_case` (SHO all; else owner
 or assignee), `user_can_edit_case` (SHO/owner/edit-admin assignment),
+`user_can_contribute_case` (same as edit **minus SHO** — uploads and
+entity/relation verification are investigator-only), case creation SHO-only,
 `visible_case_ids()` (`None` = SHO), `IsSHO`. Enforcement = queryset
 filtering + per-object checks + a middleware audit trail.
 
@@ -178,8 +180,8 @@ manifest). `POST case-package/` (edit-gated) builds sync, stores under
 
 **auditlog** — `AuditLog` rows (actor, action, **request path** as
 object_type, response status, IP) written by middleware for every
-mutating `/api/` call except `/api/audit/` itself; list is SHO-only,
-read-only. Honesty note: `object_id` is always `""` and `before` always
+mutating `/api/` call except `/api/audit/` itself; list is read-only
+(SHO sees all, investigators see only their own actions). Honesty note: `object_id` is always `""` and `before` always
 `{}` — coarser than "before/after state" suggests.
 
 Full endpoint table: [api/endpoints](api/endpoints.md). Models:
@@ -282,14 +284,19 @@ automated** (expiry surfaces as errors until re-login — known gap).
 | Route | What happens there |
 |---|---|
 | `/` | Redirect to dashboard |
-| `/login` | Password step; 2FA code step appears iff the API returns `two_factor_required` |
+| `/login` | **Role doors first** (SHO amber / investigator teal): pick a door → credentials (backend rejects mismatched `expected_role` with 403 even on correct password) → 2FA step if enabled → SHO lands on `/dashboard`, investigator on `/my-cases` |
 | `/dashboard` | Session header, 3 stat cards, cross-case flags, district overview, 2FA security card, case list |
-| `/cases` | Read-only list (⚠️ create/assign/close exist only in the API/admin) |
+| `/my-cases` | Investigator landing: assigned cases only (backend-scoped queryset) |
+| `/cases` | Case cards (risk badge, live counts) + SHO-only **Create** and **Import from ICJS** (new case from manifest → routes into its workspace) |
 | `/cases/[id]` | The workbench (below) |
 | `/search` | Grouped entity/evidence/case results, typo-tolerant |
 | `/alerts` | Feed / my notifications / routing rules / mock digests |
 
-The case workbench renders: filter toolbar (type toggles, confidence
+The case workbench renders: persistent left **sidebar** (anchor nav —
+Overview, Team, Evidence, Entities, Network Graph, Timeline, Cross-Case
+Links, Notes & Tasks, Audit Log, AI Assistant; role accent on the active
+item; chip row on mobile) → overview stat row (live counts) → team panel
+(SHO-only assign UI, reachable right after import/create) → filter toolbar
 slider, date range, debounced) → Cytoscape canvas (cose, type-colored
 nodes, labeled arrows) + **Why? panel** (label, confidence, validity
 date, extraction timestamp/engine, snippet, source doc with hash and
@@ -340,14 +347,20 @@ record, Neo4j the derived confirmed view.
 ## 8. Security Model
 
 **RBAC, in code**: one module (`cases/permissions.py`) exports `IsSHO`,
-`user_can_view_case`, `user_can_edit_case`, `visible_case_ids()`.
-Enforcement is threefold — queryset scoping (SHO sees all; others
-owned∪assigned; feeds/search/reports/cross-case filter the same way),
-per-object checks on every detail/write path (delete-case and
-merge-approve are SHO-only, both test-proven 403s), and the audit
-middleware. Cross-case paths are strict: discovery needs ≥2
-mutually-visible cases, alert delivery needs visibility of *all*
-involved cases — hidden cases never leak, not even as counts.
+`user_can_view_case`, `user_can_edit_case`, `user_can_contribute_case`,
+`visible_case_ids()`. Enforcement is threefold — queryset scoping (SHO sees
+all; others owned∪assigned; feeds/search/reports/cross-case filter the same
+way), per-object checks on every detail/write path (case create/delete,
+merge-approve, and ICJS import are SHO-only; uploads and entity/relation
+verification are investigator-only via `user_can_contribute_case`, which
+excludes SHO even though edit-rights would admit them — all test-proven
+403s), and the audit middleware (read-only list: SHO sees all,
+investigators see only their own actions). Cross-case paths are strict:
+discovery needs ≥2 mutually-visible cases, alert delivery needs visibility
+of *all* involved cases — hidden cases never leak, not even as counts.
+Login doors add a role-match check (`expected_role` vs the account's real
+role; mismatch 403s even on correct password). Known gap (tracked, not
+built): no request/approve workflow for Restricted cross-case access.
 
 **2FA, step by step**: authed `2fa/setup/` issues a base32 secret +
 `otpauth_url` (enabled stays false) → `2fa/verify/` checks the 6-digit

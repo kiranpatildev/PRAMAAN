@@ -5,7 +5,6 @@ from apps.evidence.views import EvidenceViewSet
 from apps.graph_api.views import GraphViewSet
 from apps.graph_api.views_geo import entity_locate, geo_movements, geo_nearby, geo_points
 from apps.graph_api.views_snapshots import snapshot_detail, snapshot_diff, snapshot_list_create
-from apps.icjs.views import import_case as icjs_import_case
 
 from .views import CaseViewSet
 from .views_workflow import (
@@ -55,6 +54,5 @@ urlpatterns = [
     path("<int:case_pk>/links/", link_list_create, name="case-links"),
     path("<int:case_pk>/links/<int:pk>/", link_delete, name="case-link-delete"),
     path("<int:case_pk>/activity/", activity_feed, name="case-activity"),
-    path("<int:case_pk>/icjs-import/", icjs_import_case, name="case-icjs-import"),
     path("", include(router.urls)),
 ]

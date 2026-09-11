@@ -44,6 +44,9 @@ def _hubs(nodes: dict) -> list[dict]:
         if z > HUB_Z:
             out.append({
                 "kind": "hub_outlier", "severity": "medium",
+                # Confidence grows with distance past the z=2 bar, capped:
+                # a just-over-threshold hub is a weak claim, an extreme one isn't.
+                "confidence": round(min(0.60 + (z - HUB_Z) * 0.10, 0.95), 3),
                 "nodes": [{"key": key, "label": n.get("label", key)}],
                 "explanation": (
                     f"{n.get('label', key)} has degree {n.get('degree', 0)} vs case mean "
@@ -67,6 +70,8 @@ def _bursts(nodes: dict, edges: list[dict]) -> list[dict]:
             label = nodes.get(key, {}).get("label", key)
             out.append({
                 "kind": "contact_burst", "severity": "high",
+                # Confidence grows with burst size past the 3-edge bar.
+                "confidence": round(min(0.70 + (len(es) - BURST_EDGES) * 0.05, 0.95), 3),
                 "nodes": [{"key": key, "label": label}],
                 "explanation": (
                     f"{len(es)} connections involving {label} all date to {day}: sudden "
@@ -94,6 +99,9 @@ def _weak_communities(edges: list[dict], communities: list[dict]) -> list[dict]:
             if mean < WEAK_CONF:
                 out.append({
                     "kind": "weak_evidence_community", "severity": "low",
+                    # Confidence is inverse to mean edge confidence: the weaker
+                    # the evidence, the surer we are the flag applies.
+                    "confidence": round(max(0.55, 1.0 - mean), 3),
                     "nodes": [],
                     "explanation": (
                         f"Community {cid} ({len(es)} internal edges) averages "

@@ -16,14 +16,26 @@ class CaseViewSet(viewsets.ModelViewSet):
     search_fields = ("fir_no", "title", "description")
 
     def get_queryset(self):
+        from django.db.models import Count
         user = self.request.user
-        qs = Case.objects.prefetch_related("assignments__user", "owner").all()
+        qs = Case.objects.prefetch_related("assignments__user", "owner").annotate(
+            entities_count=Count("extracted_entities", distinct=True),
+            evidence_count=Count("evidence", distinct=True),
+            alerts_count=Count("alerts", distinct=True),
+            relations_count=Count("extracted_relations", distinct=True),
+        ).all()
         if user.is_sho():
             return qs
         return _visible_to(user, qs)
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        # Case creation is an SHO action; investigators work assigned cases.
+        if not request.user.is_sho():
+            return Response({"detail": "Only SHO/Admin can create cases."}, status=403)
+        return super().create(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
         case = self.get_object()

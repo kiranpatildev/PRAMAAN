@@ -42,7 +42,15 @@ export function GeoMap({ caseId }: { caseId: string }) {
       try {
         const maplibre = await import("maplibre-gl");
         if (cancelled || !mountRef.current) return;
-        mapRef.current?.remove();
+        // Tear down the previous map first: a leaked map keeps its render
+        // loop alive against a reused container.
+        try {
+          mapRef.current?.remove();
+        } catch {
+          /* already gone */
+        }
+        mapRef.current = null;
+        if (cancelled || !mountRef.current) return;
         const map = new maplibre.Map({
           container: mountRef.current,
           style: STYLE,
@@ -72,6 +80,13 @@ export function GeoMap({ caseId }: { caseId: string }) {
     })();
     return () => {
       cancelled = true;
+      const map = mapRef.current;
+      mapRef.current = null;
+      try {
+        map?.remove();
+      } catch {
+        /* already gone */
+      }
     };
   }, [points, hotspots]);
 

@@ -5,14 +5,18 @@
 1. **Queryset scoping**: `CaseViewSet.get_queryset` (SHO all, else
    owned∪assigned); alert feed, notifications, reports, search, risk, and
    cross-case all filter by `visible_case_ids()` (`None` = SHO).
-2. **Per-object checks**: `user_can_view_case` / `user_can_edit_case`
-   (`apps/cases/permissions.py`, the single RBAC home) guard every
-   detail/write path; case delete and merge-approve are SHO-only (403
-   otherwise, both covered by tests).
+2. **Per-object checks**: `user_can_view_case` / `user_can_edit_case` /
+   `user_can_contribute_case` (`apps/cases/permissions.py`, the single RBAC
+   home) guard every detail/write path. Case create/delete, merge-approve,
+   and ICJS import are SHO-only; uploads and entity/relation verification
+   are investigator-only via `user_can_contribute_case` (SHO excluded even
+   though edit-rights would admit them — chain-of-command separation, all
+   covered by tests).
 3. **Middleware audit**: `AuditLogMiddleware` logs every POST/PUT/PATCH/
    DELETE under `/api/` (except `/api/audit/` itself) with actor, path,
    response status, and IP — best-effort, never breaks the request. The
-   audit list itself is SHO-only and **read-only**.
+   audit list is **read-only**; SHO sees all rows, investigators see only
+   their own actions.
 
 Roles: `sho` / `investigator` / `admin` on `User` (`is_sho()` covers
 sho+admin+superuser); fine-grained case rights via `CaseAssignment`

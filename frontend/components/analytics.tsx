@@ -13,7 +13,7 @@ type Factor = { name: string; value: number; weight: number; contribution: numbe
 type Score = { key: string; label: string; type: string; score: number; level: string; factors: Factor[] };
 type Anomaly = {
   kind: string; severity: string; nodes: { key: string; label: string }[];
-  explanation: string; evidence: Record<string, unknown>;
+  explanation: string; evidence: Record<string, unknown>; confidence?: number;
 };
 
 const LEVEL_COLOR: Record<string, string> = { high: "text-risk-high", medium: "text-risk-medium", low: "text-risk-low" };
@@ -142,14 +142,31 @@ export function AnalyticsPanel({
       )}
 
       <h3 className="mt-3 text-sm font-semibold text-slate-300">Anomalies ({anomalies.length})</h3>
-      <div className="space-y-1.5 text-sm">
+      <div className="grid gap-2 md:grid-cols-2">
         {anomalies.map((a, i) => (
-          <p key={i} className={a.severity === "high" ? "text-risk-high" : a.severity === "medium" ? "text-risk-medium" : "text-slate-300"}>
-            <b>[{a.severity}] {a.kind.replace(/_/g, " ")}</b> — {a.explanation}
-          </p>
+          <div key={i} className="rounded-lg border border-ink-700 bg-ink-950 p-2.5 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <b className={a.severity === "high" ? "text-risk-high" : a.severity === "medium" ? "text-risk-medium" : "text-slate-200"}>
+                {a.kind.replace(/_/g, " ")}
+              </b>
+              {typeof a.confidence === "number" && (
+                <span className="shrink-0 rounded-full border border-ink-700 px-2 py-0.5 text-xs text-accent"
+                  title="Model-estimated confidence in this finding — verify before acting">
+                  {(a.confidence * 100).toFixed(0)}%
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-slate-300">{a.explanation}</p>
+            {a.nodes?.length > 0 && (
+              <p className="mt-1 text-xs text-slate-500">On: {a.nodes.map((n) => n.label).join(", ")}</p>
+            )}
+          </div>
         ))}
         {anomalies.length === 0 && !loading && <p className="text-sm text-slate-500">No unusual patterns detected.</p>}
       </div>
+      <p className="mt-2 text-xs text-slate-500">
+        Findings require investigator verification — AI suggestions are leads, not conclusions.
+      </p>
 
       {history.length > 1 && (
         <p className="mt-2 text-xs text-slate-500">{history.length} saved assessments (latest shown above).</p>

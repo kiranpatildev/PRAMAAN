@@ -23,6 +23,19 @@ def user_can_edit_case(user, case) -> bool:
     return case.assignments.filter(user=user, permission__in=("edit", "admin")).exists()
 
 
+def user_can_contribute_case(user, case) -> bool:
+    """Hands-on evidentiary work (upload, verify/reject) is investigator-only.
+
+    SHO oversees but does not touch evidence: is_sho() users are excluded
+    even though user_can_edit_case() would otherwise admit them.
+    """
+    if user.is_sho():
+        return False
+    if case.owner_id == user.id:
+        return True
+    return case.assignments.filter(user=user, permission__in=("edit", "admin")).exists()
+
+
 def visible_case_ids(user) -> list[int] | None:
     """Case ids the user may see; None means all (SHO/admin)."""
     if user.is_sho():

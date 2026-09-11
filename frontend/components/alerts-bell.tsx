@@ -13,7 +13,10 @@ type Note = {
 
 function wsUrl(): string | null {
   if (typeof window === "undefined") return null;
-  const token = window.localStorage.getItem("pramaan_access");
+  let token: string | null = null;
+  try {
+    token = window.localStorage.getItem("pramaan_access") ?? window.sessionStorage.getItem("pramaan_access");
+  } catch { /* ignore */ }
   if (!token) return null;
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
   return `${proto}://${window.location.host}/ws/alerts/?token=${token}`;

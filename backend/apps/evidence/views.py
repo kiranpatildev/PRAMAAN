@@ -10,7 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.cases.models import Case
-from apps.cases.permissions import user_can_edit_case, user_can_view_case
+from apps.cases.permissions import user_can_contribute_case, user_can_edit_case, user_can_view_case
 
 from .models import ChainOfCustody, CustodyAction, Evidence
 from .serializers import ChainOfCustodySerializer, EvidenceSerializer
@@ -66,8 +66,8 @@ class EvidenceViewSet(viewsets.ModelViewSet):
         case, err = self._case_or_error(request)
         if err:
             return err
-        if not user_can_edit_case(request.user, case):
-            return Response({"detail": "Forbidden."}, status=403)
+        if not user_can_contribute_case(request.user, case):
+            return Response({"detail": "Only investigators assigned to this case can upload evidence."}, status=403)
         upload = request.FILES.get("file")
         if upload is None:
             return Response({"detail": "Provide multipart 'file'."}, status=400)

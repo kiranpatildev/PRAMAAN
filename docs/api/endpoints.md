@@ -35,20 +35,27 @@ mutating call (see [security-and-2fa](../features/security-and-2fa.md)).
 
 | Method + path | Auth | Notes |
 |---|---|---|
-| `GET /` | ✓ | SHO: all. Others: owned ∪ assigned. `?status=&risk_level=&district=&station=`, `?search=` (fir/title/description), `?ordering=` |
-| `POST /` | ✓ | `{fir_no (unique), title, description, status, risk_level, station, district}` → owner = you |
-| `GET /{id}/` | view | Includes nested `owner` + `assignments[]` |
+| `GET /` | ✓ | SHO: all. Others: owned ∪ assigned. `?status=&risk_level=&district=&station=`, `?search=` (fir/title/description), `?ordering=`. List rows carry `entities_count, evidence_count, alerts_count, relations_count` |
+| `POST /` | **SHO** | `{fir_no (unique), title, description, status, risk_level, station, district, state}` → owner = you; 403 otherwise |
+| `GET /{id}/` | view | Includes nested `owner` + `assignments[]` (+ the same four counts) |
+| `POST /cases/icjs-import/ {external_case_id}` | **SHO** | Creates the case from the ICJS manifest (title/fir_no/station/district/state, owner = you) then imports the bundle: 409 duplicate FIR, 422 manifest without fir_no, 404 unknown external id, 502 unreachable service. Total failure deletes the fresh empty case (log row survives, `case_id: null`) |
 | `PUT/PATCH /{id}/` | edit | 403 otherwise |
 | `DELETE /{id}/` | **SHO** | Assignments CASCADE |
 | `POST /{id}/assign/` | **IsSHO** | `{user_id, permission: view\|edit\|admin}` → upsert |
 | `POST /{id}/close/` | SHO | Flips `status` → `closed` (⚠️ no archival flow) |
+
+## ICJS import
+
+| Method + path | Auth | Notes |
+|---|---|---|
+| `GET /api/icjs/available-cases/` | **SHO** | Proxies the mock service list (`case_id, title, state, district`); 502 if unreachable; 403 otherwise |
 
 ## Evidence — `/api/cases/{id}/evidence/…` (all case-scoped)
 
 | Method + path | Auth | Body → Response |
 |---|---|---|
 | `GET /` | view | Evidence rows (newest first) |
-| `POST /` | edit | multipart `file` (+optional `file_name`, `file_type`) → 201 row; inline MinIO put, `UPLOADED` custody entry, `process_evidence.delay()`; store-down degrades to `processing_error` |
+| `POST /` | **investigator-only** (`user_can_contribute_case`: assigned investigator, never SHO) | multipart `file` (+optional `file_name`, `file_type`) → 201 row; inline MinIO put, `UPLOADED` custody entry, `process_evidence.delay()`; store-down degrades to `processing_error` |
 | `GET /{eid}/` | view | Row (**logs VIEWED**) |
 | `DELETE /{eid}/` | edit | Logs DELETED, best-effort MinIO delete |
 | `GET /{eid}/custody/` | view | `[{action, actor, details, evidence_snapshot, ip, timestamp}]` |
@@ -83,10 +90,10 @@ processing_error, created_at, updated_at` (all but name/type/mime read-only).
 | `GET ?q=&type=` | ✓ | Cross-case, visibility-scoped; empty q → `{results: []}` |
 | `GET /{id}/` | ✓ (scoped) | `{entity, evidence_trail[]}` (relations with snippets) |
 | `GET review/entities/?case_id&status=` | view | Pending queue (default filter in UI) |
-| `POST review/entities/{id}/ {decision: confirm\|reject}` | edit | Flips status, re-queues build (broker failure swallowed) |
+| `POST review/entities/{id}/ {decision: confirm\|reject}` | **investigator-only** | Flips status, re-queues build (broker failure swallowed) |
 | `PATCH review/entities/{id}/locate/ {latitude, longitude}` | edit | Location-only, range-checked → `geo_source: "manual"` (⚠️ no UI button) |
 | `GET review/relations/?case_id&status=` | view | With src/dst values + snippets |
-| `POST review/relations/{id}/` | edit | Confirm at conf ≥0.60 emits CONNECTION alert (high if ≥0.80) |
+| `POST review/relations/{id}/` | **investigator-only** | Confirm at conf ≥0.60 emits CONNECTION alert (high if ≥0.80) |
 | `GET review/merges/?case_id&status=` | view | Score-ordered suggestions |
 | `POST review/merges/{id}/ {approve\|reject}` | edit; **approve = SHO** | Approve repoints relations (folds on conflict, drops self-loops), APOC-merges graph nodes best-effort; 409 if already decided |
 
@@ -124,6 +131,7 @@ Realtime: `ws/alerts/?token=<access-JWT>` → `hello`, then
 - `GET /api/reports/` (scoped, `?case_id=`) · `POST /api/reports/case-package/
   {case_id}` (edit) → 201 `{…, download_url (7-day presigned)}`; 500 build
   failure, 503 store down · `GET /api/reports/{id}/download/` streams the PDF.
-- `GET /api/audit/` (**SHO**, read-only): `{actor, action, object_type
+- `GET /api/audit/` (read-only): SHO sees all; investigators see only rows
+  where they are the actor. Shape: `{actor, action, object_type
   (request path), object_id (always ""), before (always {}), after
   ({status}), timestamp, ip}`.

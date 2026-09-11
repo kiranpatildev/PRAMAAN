@@ -1,26 +1,24 @@
 # ICJS Import (Mock External Source)
 
-Investigators don't have to upload files one by one: with one click they
-can pull an entire case bundle from the (mock) ICJS system, and PRAMAAN's
-normal pipeline takes it from there. The mock behaves like a real external
-endpoint — separate container, HTTP only, no shared database — so swapping
-it for a real ICJS system later is a URL change (`ICJS_MOCK_BASE_URL`), not
-a rewrite. See [infra](../architecture/infra.md) and
-[ai-pipeline](../architecture/ai-pipeline.md).
+Importing from ICJS is how a new case gets created — an SHO-only action,
+sitting on the `/cases` list next to manual Create Case. The SHO picks an
+external bundle, PRAMAAN creates the case from its manifest and imports
+the evidence through the normal pipeline. Investigators never see this
+flow: no import panel in evidence intake, and the endpoints 403
+non-SHO tokens.
 
 ## How it flows
 
 ```
-[ICJS picker] → POST /api/cases/{id}/icjs-import/ {external_case_id}
-    → Django fetches each file from http://mock-icjs:9090
-    → create_evidence() per file (hash → MinIO → row → ICJS_IMPORT custody)
-    → process_evidence chain per file (classify → OCR → NER → relations → …)
-    → entities land in the review queue → confirm → graph
+[SHO: Cases → Import case → pick MH-2026-002] → POST /api/cases/icjs-import/
+    → manifest populates the new Case (title/FIR/station/district/state)
+    → file loop via create_evidence() (hash → MinIO → row → ICJS_IMPORT custody)
+    → process_evidence chain per file → review queue → land in the new workspace
 ```
 
-- **Case matching rule:** the bundle imports into whatever case the URL
-  names; `external_case_id` is stored on the `IcjsImportLog` for
-  traceability. No auto-create, no auto-match.
+- **Case matching rule:** no auto-matching — the manifest populates a brand-new
+  Case and `external_case_id` is stored on the `IcjsImportLog` for
+  traceability. Duplicate FIR → 409; manifest without `fir_no` → 422.
 - **Custody honesty:** imported files log `icjs_import` (not `uploaded`),
   with `external_case_id`, `source: "ICJS mock"`, and the download URL in
   details — the trail shows where evidence came from.

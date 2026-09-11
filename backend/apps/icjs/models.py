@@ -2,11 +2,10 @@ from django.db import models
 
 
 class IcjsImportLog(models.Model):
-    """Audit trail for one ICJS case-bundle import into a PRAMAAN case.
-
-    The investigator picks the target case explicitly (no auto-matching by
-    external id); external_case_id is stored for traceability. Mutating
-    /api/ calls are additionally logged by the audit middleware.
+    """Audit trail for one ICJS case-bundle import, which always creates its
+    PRAMAAN case (SHO-only action). external_case_id is stored for
+    traceability. Mutating /api/ calls are additionally logged by the audit
+    middleware.
     """
 
     STATUS = (
@@ -16,7 +15,10 @@ class IcjsImportLog(models.Model):
         ("failed", "Failed"),
     )
 
-    case = models.ForeignKey("cases.Case", on_delete=models.CASCADE, related_name="icjs_imports")
+    case = models.ForeignKey("cases.Case", on_delete=models.SET_NULL, null=True, blank=True,
+                               related_name="icjs_imports",
+                               help_text="Null when a totally-failed import removed its empty case; "
+                                         "the log row itself always survives for audit.")
     external_case_id = models.CharField(max_length=64)
     requested_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT)
     status = models.CharField(max_length=16, choices=STATUS, default="pending")

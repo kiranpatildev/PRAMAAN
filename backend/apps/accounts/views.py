@@ -42,7 +42,12 @@ class UserListView(APIView):
 
 
 class LoginView(TokenObtainPairView):
-    """Password step. 2FA-enabled users get a short-lived pre-token instead."""
+    """Password step. 2FA-enabled users get a short-lived pre-token instead.
+
+    Optional `expected_role` ("sho" | "investigator") enforces the login
+    door the user walked through: a mismatch is rejected even when the
+    password is correct, so accounts can never land in the wrong context.
+    """
 
     def post(self, request, *args, **kwargs):
         resp = super().post(request, *args, **kwargs)
@@ -52,6 +57,16 @@ class LoginView(TokenObtainPairView):
             user = User.objects.get(username=request.data.get("username"))
         except User.DoesNotExist:
             return resp
+        expected = (request.data.get("expected_role") or "").strip().lower()
+        if expected in ("sho", "investigator"):
+            wants_sho = expected == "sho"
+            actual = "Supervisor" if user.is_sho() else "Investigator"
+            if user.is_sho() != wants_sho:
+                return Response(
+                    {"detail": f"This account is registered as {actual}. "
+                               "Please go back and select the correct login type."},
+                    status=403,
+                )
         if user.totp_enabled and user.totp_secret:
             pre = AccessToken()
             pre.set_exp(lifetime=timedelta(minutes=5))
