@@ -33,6 +33,32 @@ def _metrics_or_503(case_id):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+def dashboard(request):
+    """Aggregated KPIs for the dashboard, scoped to visible cases.
+
+    The frontend must not sum arrays client-side; everything here is
+    pre-aggregated. None (SHO/admin) means all cases.
+    """
+    from apps.evidence.models import Evidence
+    from apps.graph_api.models import ExtractedEntity, ReviewStatus
+
+    ids = visible_case_ids(request.user)
+    cases = Case.objects.all() if ids is None else Case.objects.filter(pk__in=ids)
+    evidence = Evidence.objects.all() if ids is None else Evidence.objects.filter(case_id__in=ids)
+    entities = ExtractedEntity.objects.all() if ids is None else ExtractedEntity.objects.filter(case_id__in=ids)
+    return Response({
+        "cases_total": cases.count(),
+        "cases_open": cases.exclude(status="closed").count(),
+        "evidence_files": evidence.count(),
+        "evidence_in_pipeline": evidence.filter(ocr_status__in=("pending", "processing")).count(),
+        "entities_extracted": entities.count(),
+        "entities_pending": entities.filter(status=ReviewStatus.PENDING).count(),
+        "high_risk_cases": cases.filter(risk_level="high").count(),
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def case_overview(request, case_id):
     """Key players (centrality), communities, bridges — with engine provenance."""
     case, err = _case_or_403(request, case_id)

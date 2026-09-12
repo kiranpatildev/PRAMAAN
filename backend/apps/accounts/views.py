@@ -2,13 +2,29 @@ from datetime import timedelta
 
 from rest_framework import permissions, status
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from .models import User
+from .models import Role, User
 from .serializers import RegisterSerializer, UserSerializer
 from .totp import new_secret, provisioning_uri, verify as verify_totp
+
+
+class LoginThrottle(AnonRateThrottle):
+    scope = "login"
+    rate = "10/min"
+
+    def get_cache_key(self, request, view):
+        # Key per (client IP, username): brute-forcing one account trips
+        # quickly, while unrelated users/tests never share a bucket.
+        ident = self.get_ident(request)
+        try:
+            username = (request.data.get("username") or "").strip().lower()
+        except Exception:
+            username = ""
+        return self.cache_format % {"scope": self.scope, "ident": f"{ident}:{username}"}
 
 
 class MeView(APIView):
@@ -44,10 +60,12 @@ class UserListView(APIView):
 class LoginView(TokenObtainPairView):
     """Password step. 2FA-enabled users get a short-lived pre-token instead.
 
-    Optional `expected_role` ("sho" | "investigator") enforces the login
-    door the user walked through: a mismatch is rejected even when the
-    password is correct, so accounts can never land in the wrong context.
+    Optional `expected_role` ("sho" | "investigator" | "admin") enforces
+    the login door the user walked through: a mismatch is rejected even
+    when the password is correct, so accounts can never land in the wrong
+    context. Mismatches return 403 {"error": "wrong_door", "expected": ...}.
     """
+    throttle_classes = [LoginThrottle]
 
     def post(self, request, *args, **kwargs):
         resp = super().post(request, *args, **kwargs)
@@ -58,12 +76,16 @@ class LoginView(TokenObtainPairView):
         except User.DoesNotExist:
             return resp
         expected = (request.data.get("expected_role") or "").strip().lower()
-        if expected in ("sho", "investigator"):
-            wants_sho = expected == "sho"
-            actual = "Supervisor" if user.is_sho() else "Investigator"
-            if user.is_sho() != wants_sho:
+        if expected in ("sho", "investigator", "admin"):
+            door_role = {"sho": Role.SHO, "investigator": Role.INVESTIGATOR,
+                         "admin": Role.ADMIN}[expected]
+            actual_label = {Role.SHO: "Supervisor", Role.INVESTIGATOR: "Investigator",
+                            Role.ADMIN: "Admin"}.get(user.role, "Unknown")
+            if user.role != door_role:
                 return Response(
-                    {"detail": f"This account is registered as {actual}. "
+                    {"error": "wrong_door",
+                     "expected": user.role,
+                     "detail": f"This account is registered as {actual_label}. "
                                "Please go back and select the correct login type."},
                     status=403,
                 )
@@ -80,6 +102,7 @@ class TwoFactorLoginView(APIView):
     """Second step: {pre_token, code} -> real token pair."""
 
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [LoginThrottle]
 
     def post(self, request):
         try:

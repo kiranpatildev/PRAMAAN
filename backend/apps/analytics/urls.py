@@ -6,12 +6,14 @@ from .views import (
     case_overview,
     case_risk,
     cross_case,
+    dashboard,
     district_list,
     district_overview,
     risk_history,
 )
 
 urlpatterns = [
+    path("dashboard/", dashboard, name="analytics-dashboard"),
     path("case/<int:case_id>/overview/", case_overview, name="analytics-overview"),
     path("case/<int:case_id>/risk/", case_risk, name="analytics-risk"),
     path("case/<int:case_id>/risk/history/", risk_history, name="analytics-risk-history"),

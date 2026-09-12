@@ -1,4 +1,5 @@
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+export const API_BASE = API;
 
 const ACCESS_KEY = "pramaan_access";
 const REFRESH_KEY = "pramaan_refresh";
@@ -104,7 +105,7 @@ type FetchOpts = { noRetry?: boolean };
  *  refreshes the access token once and retries; if the session is dead it
  *  clears it (redirecting to /login) and throws a user-safe error — raw
  *  backend messages like "Token is expired" never reach the UI. */
-async function apiFetch(url: string, init: RequestInit = {}, opts: FetchOpts = {}): Promise<Response> {
+export async function apiFetch(url: string, init: RequestInit = {}, opts: FetchOpts = {}): Promise<Response> {
   const doFetch = (token: string | null) => {
     const headers = new Headers(init.headers);
     if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -131,7 +132,7 @@ async function apiFetch(url: string, init: RequestInit = {}, opts: FetchOpts = {
   return res;
 }
 
-async function handle(res: Response) {
+export async function handle(res: Response) {
   if (!res.ok) {
     if (res.status === 401) {
       throw new Error("Session expired — please sign in again.");

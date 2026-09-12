@@ -39,17 +39,34 @@ def _kick_rebuild(case_id: int) -> None:
         pass  # broker down: rebuild happens on next confirm or manual /build/
 
 
+def _page(qs, request, serializer_cls, default_limit=100, max_limit=500):
+    """?limit=&offset= pagination returning {count, results}."""
+    try:
+        limit = int(request.query_params.get("limit", default_limit))
+    except (TypeError, ValueError):
+        limit = default_limit
+    try:
+        offset = int(request.query_params.get("offset", 0))
+    except (TypeError, ValueError):
+        offset = 0
+    limit = max(1, min(limit, max_limit))
+    offset = max(0, offset)
+    total = qs.count()
+    page = qs[offset:offset + limit]
+    return Response({"count": total, "results": serializer_cls(page, many=True).data})
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def review_entities(request):
     case, err = _case_or_403(request, request.query_params.get("case_id"))
     if err:
         return err
-    qs = ExtractedEntity.objects.filter(case=case).select_related("evidence", "case")
+    qs = ExtractedEntity.objects.filter(case=case).select_related("evidence", "case").order_by("id")
     status_ = request.query_params.get("status")
     if status_:
         qs = qs.filter(status=status_)
-    return Response(ExtractedEntitySerializer(qs[:200], many=True).data)
+    return _page(qs, request, ExtractedEntitySerializer)
 
 
 @api_view(["POST"])
@@ -61,10 +78,7 @@ def review_entity_decide(request, pk):
     decision = (request.data.get("decision") or request.query_params.get("decision") or "").lower()
     if decision not in ("confirm", "reject"):
         return Response({"detail": "decision must be confirm|reject"}, status=400)
-    ent.status = ReviewStatus.CONFIRMED if decision == "confirm" else ReviewStatus.REJECTED
-    ent.save(update_fields=["status", "updated_at"])
-    _kick_rebuild(ent.case_id)
-    return Response(ExtractedEntitySerializer(ent).data)
+    return _decide_entity(ent, decision)
 
 
 @api_view(["GET"])
@@ -74,11 +88,11 @@ def review_relations(request):
     if err:
         return err
     qs = (ExtractedRelation.objects.filter(case=case)
-          .select_related("src", "dst", "evidence"))
+          .select_related("src", "dst", "evidence").order_by("id"))
     status_ = request.query_params.get("status")
     if status_:
         qs = qs.filter(status=status_)
-    return Response(ExtractedRelationSerializer(qs[:200], many=True).data)
+    return _page(qs, request, ExtractedRelationSerializer)
 
 
 @api_view(["POST"])
@@ -118,11 +132,81 @@ def merge_list(request):
     case, err = _case_or_403(request, request.query_params.get("case_id"))
     if err:
         return err
-    qs = MergeSuggestion.objects.filter(case=case).select_related("entity_a", "entity_b")
+    qs = MergeSuggestion.objects.filter(case=case).select_related("entity_a", "entity_b").order_by("id")
     status_ = request.query_params.get("status")
     if status_:
         qs = qs.filter(status=status_)
-    return Response(MergeSuggestionSerializer(qs[:200], many=True).data)
+    return _page(qs, request, MergeSuggestionSerializer)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def review_queue(request):
+    """Cross-case pending queue, scoped to visible cases.
+
+    Returns {"entities": {count, results}, "relations": {...}, "merges": {...}}.
+    Serializers already carry case/case_fir for scoping display.
+    """
+    from apps.cases.permissions import visible_case_ids
+
+    ids = visible_case_ids(request.user)
+    status_ = request.query_params.get("status", "pending")
+    ent = ExtractedEntity.objects.select_related("evidence", "case").order_by("id")
+    rel = ExtractedRelation.objects.select_related("src", "dst", "evidence").order_by("id")
+    mrg = MergeSuggestion.objects.select_related("entity_a", "entity_b").order_by("id")
+    if ids is not None:
+        ent = ent.filter(case_id__in=ids)
+        rel = rel.filter(case_id__in=ids)
+        mrg = mrg.filter(case_id__in=ids)
+    if status_:
+        ent = ent.filter(status=status_)
+        rel = rel.filter(status=status_)
+        mrg = mrg.filter(status=status_)
+    try:
+        limit = max(1, min(int(request.query_params.get("limit", 50)), 200))
+    except (TypeError, ValueError):
+        limit = 50
+    return Response({
+        "entities": {"count": ent.count(),
+                     "results": ExtractedEntitySerializer(ent[:limit], many=True).data},
+        "relations": {"count": rel.count(),
+                      "results": ExtractedRelationSerializer(rel[:limit], many=True).data},
+        "merges": {"count": mrg.count(),
+                   "results": MergeSuggestionSerializer(mrg[:limit], many=True).data},
+    })
+
+
+def _decide_entity(ent, decision):
+    ent.status = ReviewStatus.CONFIRMED if decision == "confirm" else ReviewStatus.REJECTED
+    ent.save(update_fields=["status", "updated_at"])
+    _kick_rebuild(ent.case_id)
+    return Response(ExtractedEntitySerializer(ent).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def case_entity_confirm(request, case_pk, eid):
+    """Nested spec route: confirm one case entity. SHO gets 403."""
+    case = get_object_or_404(Case, pk=case_pk)
+    ent = get_object_or_404(ExtractedEntity, pk=eid, case=case)
+    if not user_can_view_case(request.user, case):
+        return Response({"detail": "Forbidden."}, status=403)
+    if not user_can_contribute_case(request.user, case):
+        return Response({"detail": "Only investigators assigned to this case can verify entities."}, status=403)
+    return _decide_entity(ent, "confirm")
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def case_entity_reject(request, case_pk, eid):
+    """Nested spec route: reject one case entity. SHO gets 403."""
+    case = get_object_or_404(Case, pk=case_pk)
+    ent = get_object_or_404(ExtractedEntity, pk=eid, case=case)
+    if not user_can_view_case(request.user, case):
+        return Response({"detail": "Forbidden."}, status=403)
+    if not user_can_contribute_case(request.user, case):
+        return Response({"detail": "Only investigators assigned to this case can verify entities."}, status=403)
+    return _decide_entity(ent, "reject")
 
 
 def _pick_survivor(a: ExtractedEntity, b: ExtractedEntity) -> tuple[ExtractedEntity, ExtractedEntity]:

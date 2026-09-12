@@ -2,111 +2,164 @@
 @tailwind components;
 @tailwind utilities;
 
-/* PRAMAAN intelligence-workspace theme. Dark is the only target theme;
- * the light toggle is retained for daytime briefings and remaps the
- * shared tokens below. Canonical hexes live in lib/theme.ts. */
-:root,
-[data-theme="dark"] {
+/* PRAMAAN — dark, dense, quiet, authoritative.
+ * Hard bans enforced: no color blends, no blur except modal overlay,
+ * no shadow except modal card, no radius above 6px. */
+
+:root {
   color-scheme: dark;
-  --bg: #0b0f17;
-  --surface: #121826;
-  --surface-2: #1a2233;
-  --border: #1f2733;
-  --text: #e5e7eb;
-  --muted: #8b93a1;
-  --accent: #3b82f6;
 }
 
-[data-theme="light"] {
-  color-scheme: light;
-  --bg: #eef2f7;
-  --surface: #ffffff;
-  --surface-2: #e2e8f0;
-  --border: #cbd5e1;
-  --text: #0f172a;
-  --muted: #475569;
-  --accent: #2563eb;
+html,
+body {
+  background: #0a0e14;
+  color: #e6edf3;
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: Inter, "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  @apply antialiased;
+  font-family: var(--font-ui), Inter, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 .mono {
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono), "JetBrains Mono", ui-monospace, monospace;
 }
 
-.card {
-  @apply rounded-lg border p-5 shadow-none;
-  background: var(--surface);
-  border-color: var(--border);
+/* Micro labels: 9.5px mono uppercase, ls .12em. Micro text: 10.5px, ls .06em. */
+.micro-label {
+  font-family: var(--font-mono), "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #48546a;
 }
 
-.btn {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50;
-  background: var(--accent);
-  color: #f8fafc;
+.micro {
+  font-family: var(--font-mono), "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
-.btn-ghost {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50;
-  border-color: var(--border);
-  color: var(--text);
-  background: transparent;
+/* Page header block (non-case pages). */
+.ph {
+  border-bottom: 1px solid #1a222d;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+}
+.ph-eyebrow {
+  font-family: var(--font-mono), "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #48546a;
+  margin-bottom: 8px;
+}
+.ph h1 {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  margin-bottom: 6px;
+}
+.ph-sub {
+  font-size: 13px;
+  color: #6b7a8f;
+  max-width: 620px;
+  line-height: 1.55;
 }
 
-.btn-ghost:hover {
-  border-color: var(--accent);
+/* Skeleton rows: flat 42px bars at low opacity, pulsing only. */
+.skel-row {
+  height: 42px;
+  border-bottom: 1px solid #1a222d;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  animation: skel-pulse 1.4s ease-in-out infinite;
+}
+.skel-bar {
+  height: 10px;
+  border-radius: 3px;
+  background: #1a222d;
+}
+@keyframes skel-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
 
-.input {
-  @apply w-full rounded-lg border px-3 py-2 text-sm outline-none;
-  background: var(--surface-2);
-  border-color: var(--border);
-  color: var(--text);
+/* Route-change animation: fade + 3px rise, 220ms. */
+@keyframes route-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.route-in {
+  animation: route-in 220ms ease-out;
 }
 
-.input:focus {
-  border-color: var(--accent);
+/* Modal enter: fade 150ms + scale .97->1 + rise 6px->0. */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.modal-in {
+  animation: modal-in 150ms ease-out;
 }
 
-.skeleton {
-  @apply animate-pulse rounded-lg;
-  background: var(--surface-2);
+/* Toast enter: slide from translateX(40px). */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.toast-in {
+  animation: toast-in 180ms ease-out;
 }
 
-/* Thin scrollbars for dense panels. */
+/* Thin scrollbars. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: #1a222d transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: #1a222d;
   border-radius: 4px;
 }
 
-/* Light-theme remap of the shared dark utilities used across components. */
-[data-theme="light"] .bg-ink-950 { background-color: var(--bg) !important; }
-[data-theme="light"] .bg-ink-900 { background-color: var(--surface) !important; }
-[data-theme="light"] .bg-ink-800 { background-color: var(--surface-2) !important; }
-[data-theme="light"] .bg-ink-700 { background-color: var(--border) !important; }
-[data-theme="light"] .border-ink-700 { border-color: var(--border) !important; }
-[data-theme="light"] .divide-ink-700 > * { border-color: var(--border) !important; }
-[data-theme="light"] .text-slate-100,
-[data-theme="light"] .text-slate-200,
-[data-theme="light"] .text-white { color: var(--text) !important; }
-[data-theme="light"] .text-slate-300,
-[data-theme="light"] .text-slate-400,
-[data-theme="light"] .text-slate-500 { color: var(--muted) !important; }
-[data-theme="light"] .text-accent { color: var(--accent) !important; }
-[data-theme="light"] .bg-accent { background-color: var(--accent) !important; }
-[data-theme="light"] .bg-accent\/15 { background-color: rgb(37 99 235 / 0.12) !important; }
-[data-theme="light"] .hover\:border-accent:hover { border-color: var(--accent) !important; }
-[data-theme="light"] .hover\:text-accent:hover { color: var(--accent) !important; }
+/* Focus visibility: cyan outline for keyboard users. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 1px solid #00d9ff;
+  outline-offset: 1px;
+}

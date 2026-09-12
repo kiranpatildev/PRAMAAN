@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from apps.evidence.views import EvidenceViewSet
 from apps.graph_api.views import GraphViewSet
 from apps.graph_api.views_geo import entity_locate, geo_movements, geo_nearby, geo_points
+from apps.graph_api.views_review import case_entity_confirm, case_entity_reject
 from apps.graph_api.views_snapshots import snapshot_detail, snapshot_diff, snapshot_list_create
 
 from .views import CaseViewSet
@@ -29,6 +30,7 @@ evidence_reprocess = EvidenceViewSet.as_view({"post": "reprocess"})
 graph_detail = GraphViewSet.as_view({"get": "retrieve"})
 graph_expand = GraphViewSet.as_view({"get": "expand"})
 graph_build = GraphViewSet.as_view({"post": "build"})
+graph_relationships = GraphViewSet.as_view({"get": "relationships"})
 graph_timeline = GraphViewSet.as_view({"get": "timeline"})
 
 urlpatterns = [
@@ -38,6 +40,7 @@ urlpatterns = [
     path("<int:case_pk>/evidence/<int:pk>/download/", evidence_download, name="case-evidence-download"),
     path("<int:case_pk>/evidence/<int:pk>/reprocess/", evidence_reprocess, name="case-evidence-reprocess"),
     path("<int:case_pk>/graph/", graph_detail, name="case-graph"),
+    path("<int:case_pk>/relationships/", graph_relationships, name="case-relationships"),
     path("<int:case_pk>/graph/expand/", graph_expand, name="case-graph-expand"),
     path("<int:case_pk>/graph/build/", graph_build, name="case-graph-build"),
     path("<int:case_pk>/graph/snapshots/", snapshot_list_create, name="case-snapshots"),
@@ -54,5 +57,7 @@ urlpatterns = [
     path("<int:case_pk>/links/", link_list_create, name="case-links"),
     path("<int:case_pk>/links/<int:pk>/", link_delete, name="case-link-delete"),
     path("<int:case_pk>/activity/", activity_feed, name="case-activity"),
+    path("<int:case_pk>/entities/<int:eid>/confirm/", case_entity_confirm, name="case-entity-confirm"),
+    path("<int:case_pk>/entities/<int:eid>/reject/", case_entity_reject, name="case-entity-reject"),
     path("", include(router.urls)),
 ]

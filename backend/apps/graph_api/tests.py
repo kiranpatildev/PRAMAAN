@@ -225,7 +225,7 @@ class ReviewApiTests(TestCase):
         c = self._client(self.inv)
         lst = c.get(f"/api/entities/review/entities/?case_id={self.case.id}&status=pending")
         self.assertEqual(lst.status_code, 200)
-        self.assertEqual(len(lst.data), 2)
+        self.assertEqual(len(lst.data["results"]), 2)
         with mock.patch("apps.graph_api.services.graph_service.GraphService") as GS:
             ok = c.post(f"/api/entities/review/entities/{self.a.id}/", {"decision": "confirm"})
         self.assertEqual(ok.status_code, 200)

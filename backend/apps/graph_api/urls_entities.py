@@ -4,6 +4,7 @@ from . import views_entities, views_geo, views_review
 
 urlpatterns = [
     path("", views_entities.entity_search, name="entity-search"),
+    path("review/queue/", views_review.review_queue, name="review-queue"),
     path("review/entities/", views_review.review_entities, name="review-entities"),
     path("review/entities/<int:pk>/", views_review.review_entity_decide, name="review-entity-decide"),
     path("review/entities/<int:pk>/locate/", views_geo.entity_locate, name="review-entity-locate"),

@@ -1,44 +1,36 @@
 import type { Metadata, Viewport } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { LangProvider } from "@/lib/i18n";
-import { AppShell } from "@/components/app-shell";
-import { OnlineBanner } from "@/components/online-status";
+
+const ui = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-ui",
+  display: "swap",
+});
+
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "PRAMAAN — Criminal Network Analysis",
-  description: "Evidence-backed temporal knowledge graph for investigations.",
-  manifest: "/manifest.webmanifest",
+  title: "Pramaan — Evidence Intelligence",
+  description: "Case intelligence without the noise.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b0f17",
+  themeColor: "#0a0e14",
   width: "device-width",
   initialScale: 1,
 };
 
-// Pre-hydration theme: avoids a dark-flash for light-theme users.
-const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem("pramaan_theme");if(t==="light"||t==="dark"){document.documentElement.dataset.theme=t;}}catch(e){}})();`;
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="dark">
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body>
-        <LangProvider>
-          <AppShell>
-            <OnlineBanner />
-            {children}
-          </AppShell>
-        </LangProvider>
-      </body>
+    <html lang="en" className={`${ui.variable} ${mono.variable}`}>
+      <body>{children}</body>
     </html>
   );
 }

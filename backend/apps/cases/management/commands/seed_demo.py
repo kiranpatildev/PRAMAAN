@@ -57,6 +57,7 @@ class Command(BaseCommand):
         inv = self._user("inv_demo", Role.INVESTIGATOR)
         priya = self._user("inv_priya", Role.INVESTIGATOR)
         amit = self._user("inv_amit", Role.INVESTIGATOR)
+        self._user("admin", Role.ADMIN, is_staff=True, is_superuser=True)
         investigators = [inv, priya, amit]
 
         n = min(opts["cases"], len(CASES))
@@ -132,11 +133,12 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"Seeded sho_demo/inv_demo/inv_priya/inv_amit + {n} cases (password Pramaan123!)."))
 
-    def _user(self, username, role, is_staff=False):
+    def _user(self, username, role, is_staff=False, is_superuser=False):
         user, _ = User.objects.get_or_create(username=username, defaults={"role": role, "is_staff": is_staff})
         user.set_password("Pramaan123!")
         user.role = role
         user.is_staff = is_staff
+        user.is_superuser = is_superuser
         user.totp_secret = ""  # demo logins stay 2FA-free; enable it in-app to try 2FA
         user.totp_enabled = False
         user.save()

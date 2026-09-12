@@ -65,7 +65,8 @@ def _cite_entity(ent, files, score=1.0, method="registry"):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def query(request):
-    question = str(request.data.get("question", "")).strip()[:1000]
+    # Accepts {question} (legacy) or {query} (spec alias) plus optional case_id.
+    question = str(request.data.get("question") or request.data.get("query") or "").strip()[:1000]
     if not question:
         return Response({"detail": "question is required."}, status=400)
     case_ids, err = _scope(request, request.data.get("case_id"))

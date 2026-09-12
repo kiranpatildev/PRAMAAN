@@ -65,6 +65,9 @@ class CaseViewSet(viewsets.ModelViewSet):
         case = self.get_object()
         user = get_object_or_404(User, pk=request.data.get("user_id"))
         permission = request.data.get("permission", "edit")
+        if permission == "remove":
+            CaseAssignment.objects.filter(case=case, user=user).delete()
+            return Response({"removed": True}, status=status.HTTP_200_OK)
         obj, _ = CaseAssignment.objects.update_or_create(
             case=case, user=user,
             defaults={"permission": permission, "assigned_by": request.user},
@@ -78,6 +81,16 @@ class CaseViewSet(viewsets.ModelViewSet):
         if not request.user.is_sho():
             return Response({"detail": "Only SHO/Admin can close cases."}, status=403)
         case.status = "closed"
+        case.save(update_fields=["status", "updated_at"])
+        return Response(CaseSerializer(case).data)
+
+    @action(detail=True, methods=["post"])
+    def reopen(self, request, pk=None):
+        """Reopen a closed case (SHO-only)."""
+        case = self.get_object()
+        if not request.user.is_sho():
+            return Response({"detail": "Only SHO/Admin can reopen cases."}, status=403)
+        case.status = "open"
         case.save(update_fields=["status", "updated_at"])
         return Response(CaseSerializer(case).data)
 
