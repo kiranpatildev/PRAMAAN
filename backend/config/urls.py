@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.copilot.views import graph_query as assistant_graph_query
 from apps.copilot.views import query as assistant_query
 
 urlpatterns = [
@@ -17,6 +18,7 @@ urlpatterns = [
     path("api/copilot/", include("apps.copilot.urls")),
     # Spec alias: the assistant speaks to the same scoped retrieval view.
     path("api/assistant/query/", assistant_query, name="assistant-query"),
+    path("api/assistant/graph-query/", assistant_graph_query, name="assistant-graph-query"),
     path("api/search/", include("apps.search.urls")),
     path("api/alerts/", include("apps.alerts.urls")),
     path("api/reports/", include("apps.reports.urls")),

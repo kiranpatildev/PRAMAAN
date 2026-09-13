@@ -111,6 +111,9 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
     "DEFAULT_THROTTLE_RATES": {
         "login": "10/min",
+        # NL-to-Cypher copilot: per-user LLM-cost guard (one model call per
+        # question; throttle is defense in depth, mirroring LoginThrottle).
+        "graph_query": "30/min",
     },
 }
 

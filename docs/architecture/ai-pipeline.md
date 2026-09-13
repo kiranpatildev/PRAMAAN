@@ -180,6 +180,30 @@ community mean confidence <.5 with ≥2 edges) — sklearn/torch are
 documented swap-ins, not installed. See
 [analytics-and-risk-scoring](../features/analytics-and-risk-scoring.md).
 
+## 9b. Graph-query copilot (read-only NL→Cypher, verifier-gated)
+
+`POST /api/copilot/graph-query/` (alias `/api/assistant/graph-query/`).
+Stage 2 gate (`copilot/services/nl_to_cypher.py`) runs before every
+execution, with zero LLM involvement: banned-clause tripwire (on
+literal-stripped text) → real grammar parse (`cypher_parse.py`, single
+MATCH / WHERE / RETURN / ORDER BY / LIMIT only — no WITH/SKIP/variable
+paths/procedures) → AST checks (every node aliased + `:Case`-labeled,
+labels/types/props against the `graph_service` constants, aliases resolve,
+functions allowlisted) → server-side scope injection
+(`alias.case_id IN $case_ids` from `visible_case_ids()`, LIMIT forced to
+100, 10 s timeout). Execution goes through `GraphService.run_readonly`
+(the only sanctioned path for non-hardcoded Cypher) with honest
+`GraphUnavailable` degradation. Per-user throttle (`graph_query`, 30/min);
+every accept/reject writes a `read-sensitive` audit row with the query
+text. Slice 1 takes hand-written Cypher (Ask/Graph toggle on the assistant
+page, "Isolate on graph" hands node keys to the Network canvas);
+NL generation lands behind the same gate in slice 2. Slice 3 preprocesses
+questions before the LLM call: relative dates resolve server-side to one
+$date_from/$date_to pair (server overwrites model params; Asia/Kolkata wall
+clock), and quoted/multi-token mentions match CONFIRMED registry rows only
+— multi-row matches return a pick-one disambiguation answer with zero LLM
+spend, single hits become prompt hints. Pending rows never resolve.
+
 ## 9. Gemini RAG copilot
 
 Intent router first (regex, no LLM): *path* ("how is X connected to Y",

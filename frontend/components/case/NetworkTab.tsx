@@ -14,9 +14,10 @@ import { Share2 } from "lucide-react";
 import type { GraphCanvasHandle, CanvasEdge, CanvasNode } from "../network/GraphCanvas";
 import { SnapshotsPanel } from "./SnapshotsPanel";
 
-export function NetworkTab({ caseId: cid, highlightLabels = [], canEdit = false }: {
+export function NetworkTab({ caseId: cid, highlightLabels = [], isolateKeys = [], canEdit = false }: {
   caseId: string | number;
   highlightLabels?: string[];
+  isolateKeys?: string[];
   canEdit?: boolean;
 }) {
   const toast = useToast();
@@ -64,6 +65,21 @@ export function NetworkTab({ caseId: cid, highlightLabels = [], canEdit = false 
     setHighlight(ids);
     if (ids.length) canvasRef.current?.focus(ids[0]);
   }, [highlightLabels, nodes]);
+
+  // Copilot handoff: focus graph-query result keys on the existing canvas.
+  // isolate() takes a single id, so exactly-one matches isolate (hiding the
+  // rest); multiple matches highlight without hiding — the canvas cannot
+  // isolate N nodes, and hiding all-but-N is not something we fake.
+  useEffect(() => {
+    if (!isolateKeys.length || !nodes.length) return;
+    const have = new Set(nodes.map((n) => n.id));
+    const matched = isolateKeys.filter((k) => have.has(k));
+    if (!matched.length) return;
+    setSelectedId(matched[0]);
+    setHighlight(matched);
+    canvasRef.current?.focus(matched[0]);
+    canvasRef.current?.isolate(matched.length === 1 ? matched[0] : null);
+  }, [isolateKeys, nodes]);
 
   async function onExpand() {
     if (!selectedId) return;

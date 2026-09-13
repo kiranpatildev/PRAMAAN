@@ -19,6 +19,24 @@ EDGE_TYPES = {
 }
 NODE_TYPES = {"Person", "Organization", "Location", "Vehicle", "PhoneNumber", "Event"}
 
+# Canonical property sets — the single source of truth for what lives on
+# graph nodes/edges. upsert_* build their records from these lists, and the
+# NL-to-Cypher schema injector reads them, so a schema change updates the
+# copilot prompt automatically (never a static string in a prompt).
+NODE_PROPS = (
+    "key", "case_id", "node_type", "value", "normalized",
+    "confidence_score", "source_evidence_id", "extracted_by",
+    "extracted_on", "valid_from", "valid_to",
+)
+EDGE_PROPS = (
+    "case_id", "confidence_score", "source_evidence_id", "snippet",
+    "extracted_by", "extracted_on", "valid_from", "valid_to",
+)
+# Every node also carries the :Case label (MERGE uses it for idempotency);
+# every read path filters on case_id. The NL-to-Cypher verifier enforces
+# both facts on generated queries.
+GRAPH_NODE_LABEL = "Case"
+
 
 class GraphUnavailable(RuntimeError):
     """Raised when the Neo4j driver is missing or the database unreachable."""
@@ -223,19 +241,39 @@ class GraphService:
             driver.close()
         return {"case_id": case_id, "events": events}
 
+    def run_readonly(self, cypher: str, params: dict | None = None,
+                     timeout_s: int = 10) -> list[dict]:
+        """Execute a verifier-approved read query; return raw record dicts.
+
+        The ONLY sanctioned path for executing non-hardcoded Cypher
+        (NL-to-Cypher copilot). Callers must pass output of
+        `nl_to_cypher.verify_and_scope` — this method does NOT re-verify,
+        it only enforces the query timeout and maps driver records to plain
+        dicts. Honest degradation via GraphUnavailable, same as all reads.
+        """
+        driver = self._driver()
+        try:
+            with driver.session() as session:
+                result = session.run(cypher, parameters=dict(params or {}),
+                                     timeout=float(timeout_s))
+                rows = []
+                for rec in result:
+                    rows.append({k: _one(rec[k]) for k in rec.keys()})
+                return rows
+        finally:
+            driver.close()
+
     # -- writes (Phase 3: extraction pipeline calls these) ------------------
     def upsert_entity(self, case_id: int, node_type: str, props: dict) -> dict:
         assert node_type in NODE_TYPES, f"unknown node type {node_type}"
         key = node_key(case_id, node_type, props.get("normalized", props.get("value", "")))
-        record = {
-            "key": key, "case_id": case_id, "node_type": node_type,
-            "value": props.get("value", ""), "normalized": props.get("normalized", ""),
-            "confidence_score": props.get("confidence_score", 0.0),
-            "source_evidence_id": props.get("source_evidence_id"),
-            "extracted_by": props.get("extracted_by", "pipeline"),
-            "extracted_on": props.get("extracted_on", utcnow_iso()),
-            "valid_from": props.get("valid_from"), "valid_to": props.get("valid_to"),
-        }
+        defaults = {"case_id": case_id, "value": "", "normalized": "",
+                    "confidence_score": 0.0, "extracted_by": "pipeline",
+                    "extracted_on": utcnow_iso()}
+        record = {k: props.get(k, defaults.get(k)) for k in NODE_PROPS}
+        record["key"] = key
+        record["case_id"] = case_id
+        record["node_type"] = node_type
         driver = self._driver()
         try:
             with driver.session() as session:
@@ -249,15 +287,10 @@ class GraphService:
 
     def upsert_relationship(self, case_id: int, edge_type: str, src_key: str, dst_key: str, props: dict) -> dict:
         assert edge_type in EDGE_TYPES, f"unknown edge type {edge_type}"
-        record = {
-            "case_id": case_id,
-            "confidence_score": props.get("confidence_score", 0.0),
-            "source_evidence_id": props.get("source_evidence_id"),
-            "snippet": props.get("snippet", ""),
-            "extracted_by": props.get("extracted_by", "pipeline"),
-            "extracted_on": props.get("extracted_on", utcnow_iso()),
-            "valid_from": props.get("valid_from"), "valid_to": props.get("valid_to"),
-        }
+        defaults = {"case_id": case_id, "confidence_score": 0.0, "snippet": "",
+                    "extracted_by": "pipeline", "extracted_on": utcnow_iso()}
+        record = {k: props.get(k, defaults.get(k)) for k in EDGE_PROPS}
+        record["case_id"] = case_id
         driver = self._driver()
         try:
             with driver.session() as session:

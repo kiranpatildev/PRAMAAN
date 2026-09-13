@@ -3,8 +3,8 @@
 import { API_BASE, apiFetch, handle } from "./api";
 import type {
   AlertItem, AssistantAnswer, AuditEntry, CaseItem, DashboardKpis, Evidence,
-  GraphData, MergeSuggestion, Note, Paginated, ReviewRelation, SearchHit,
-  Task, User,
+  GraphData, GraphQueryAnswer, MergeSuggestion, Note, Paginated, ReviewRelation,
+  SearchHit, Task, User,
 } from "./types";
 
 function qs(params: Record<string, string | number | undefined | null>): string {
@@ -293,6 +293,20 @@ export function assistantQuery(query: string, case_id?: string | number): Promis
   return apiFetch(`${API_BASE}/assistant/query/`, {
     method: "POST",
     body: JSON.stringify({ query, ...(case_id ? { case_id } : {}) }),
+  }).then(handle);
+}
+
+export function graphQueryCypher(cypher: string, params?: Record<string, unknown>, case_id?: string | number): Promise<GraphQueryAnswer> {
+  return apiFetch(`${API_BASE}/assistant/graph-query/`, {
+    method: "POST",
+    body: JSON.stringify({ cypher, ...(params ? { params } : {}), ...(case_id ? { case_id } : {}) }),
+  }).then(handle);
+}
+
+export function graphQueryQuestion(question: string, case_id?: string | number): Promise<GraphQueryAnswer> {
+  return apiFetch(`${API_BASE}/assistant/graph-query/`, {
+    method: "POST",
+    body: JSON.stringify({ question, ...(case_id ? { case_id } : {}) }),
   }).then(handle);
 }
 

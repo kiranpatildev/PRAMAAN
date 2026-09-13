@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FolderOpen, ShieldAlert } from "lucide-react";
 import { CaseHeader, type CaseAction } from "@/components/case/CaseHeader";
 import { CaseTabs, type CaseTabId, type TabDef } from "@/components/case/CaseTabs";
@@ -29,13 +29,36 @@ import {
 import { isSho } from "@/lib/auth";
 import type { CaseItem } from "@/lib/types";
 
+const VALID_TABS = new Set([
+  "overview", "team", "evidence", "entities", "network", "timeline",
+  "cross", "analytics", "notes", "audit", "reports",
+]);
+
 export default function CaseWorkspacePage({ params }: { params: { id: string } }) {
+  return (
+    <Suspense>
+      <CaseWorkspaceBody params={params} />
+    </Suspense>
+  );
+}
+
+function CaseWorkspaceBody({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const isolateParam = searchParams.get("isolate") ?? "";
   const toast = useToast();
   const [kase, setKase] = useState<CaseItem | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [meId, setMeId] = useState<number | null>(null);
-  const [tab, setTab] = useState<CaseTabId>("overview");
+  const [tab, setTab] = useState<CaseTabId>(
+    initialTab && VALID_TABS.has(initialTab) ? (initialTab as CaseTabId) : "overview"
+  );
+  // Copilot handoff (?tab=network&isolate=key1,key2): node keys to focus on
+  // the canvas once it loads. Unknown keys are ignored by the Network tab.
+  const [isolateKeys] = useState<string[]>(
+    isolateParam.split(",").map((k) => k.trim()).filter(Boolean).slice(0, 100)
+  );
   const [timelineCount, setTimelineCount] = useState(0);
   const [status, setStatus] = useState<"loading" | "ok" | "forbidden" | "missing" | "error">("loading");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -206,7 +229,7 @@ export default function CaseWorkspacePage({ params }: { params: { id: string } }
         {tab === "team" && sho && <TeamTab caseId={kase.id} assigned={assigned} onChanged={refresh} />}
         {tab === "evidence" && <EvidenceTab caseId={kase.id} sho={sho} canContribute={canContribute} />}
         {tab === "entities" && <EntitiesTab caseId={kase.id} sho={sho} canVerify={canContribute} />}
-        {tab === "network" && <NetworkTab caseId={kase.id} highlightLabels={highlightLabels} canEdit={sho || canContribute} />}
+        {tab === "network" && <NetworkTab caseId={kase.id} highlightLabels={highlightLabels} isolateKeys={isolateKeys} canEdit={sho || canContribute} />}
         {tab === "timeline" && (
           <TimelineTab
             caseId={kase.id}

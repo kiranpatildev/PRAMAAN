@@ -50,12 +50,20 @@ def embed_texts(texts: list[str]) -> list[list[float] | None]:
     return out
 
 
-def generate(prompt: str) -> str:
-    """Grounded generation; raises GeminiUnavailable on any failure."""
+def generate(prompt: str, temperature: float | None = None) -> str:
+    """Grounded generation; raises GeminiUnavailable on any failure.
+
+    `temperature` is None by default (existing callers unchanged); the
+    NL-to-Cypher path passes 0.0 for deterministic output.
+    """
     client = _client()
     model = getattr(settings, "GEMINI_MODEL", "gemini-2.0-flash")
     try:
-        resp = client.models.generate_content(model=model, contents=prompt)
+        kwargs: dict = {}
+        if temperature is not None:
+            from google.genai import types
+            kwargs["config"] = types.GenerateContentConfig(temperature=temperature)
+        resp = client.models.generate_content(model=model, contents=prompt, **kwargs)
         text = (resp.text or "").strip()
         if not text:
             raise GeminiUnavailable("empty generation response")

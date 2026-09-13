@@ -237,6 +237,20 @@ export interface AssistantAnswer {
   model?: string;
 }
 
+export interface GraphQueryAnswer {
+  question?: string;
+  intent?: string;
+  generated?: boolean;
+  unanswerable: boolean;
+  answer_text: string;
+  node_ids: string[];
+  edge_ids: string[];
+  rows?: Record<string, unknown>[];
+  cypher_shown: string;
+  confidence: number;
+  explanation?: string;
+}
+
 export interface MergeSuggestion {
   id: number;
   a_value: string;

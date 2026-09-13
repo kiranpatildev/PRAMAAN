@@ -10,9 +10,10 @@ Every answer carries citations; nothing is ever asserted without evidence.
 Case scoping is enforced before any lookup.
 """
 from django.db.models import Q
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 
 from apps.cases.models import Case
 from apps.cases.permissions import user_can_view_case, visible_case_ids
@@ -23,6 +24,23 @@ from apps.graph_api.services.graph_service import GraphService, GraphUnavailable
 from .services import intents
 from .services import retrieval as R
 from .services.gemini import GeminiUnavailable, generate, is_configured
+from .services.nl_to_cypher import (
+    CypherRejected,
+    GenerationUnavailable,
+    QUERY_TIMEOUT_S,
+    build_question_context,
+    generate_cypher,
+    run_graph_query,
+)
+
+
+class GraphQueryThrottle(UserRateThrottle):
+    """Per-user LLM-cost guard for graph-query (mirrors LoginThrottle).
+
+    One model call per question; the throttle is defense in depth.
+    """
+
+    scope = "graph_query"
 
 
 def _scope(request, case_id):
@@ -174,6 +192,191 @@ def _answer_summary(request, case_ids, question):
     lines += [f"- {c.fir_no}: {c.title} [{c.status}, {c.risk_level} risk]" for c in cases[:10]]
     return {"question": question, "intent": "summary", "generated": False,
             "answer": "\n".join(lines), "citations": citations}
+
+
+def _unanswerable(question, answer_text, explanation, cypher=""):
+    return {
+        "question": question, "intent": "graph", "generated": True,
+        "unanswerable": True, "answer_text": answer_text,
+        "node_ids": [], "edge_ids": [], "rows": [],
+        "cypher_shown": cypher, "confidence": 0.0, "explanation": explanation,
+    }
+
+
+def _disambiguation_answer(question, ambiguities):
+    lines = ["That name matches more than one confirmed entity — I won't guess. Pick one:"]
+    for m in ambiguities[:5]:
+        lines.append(f"'{m['mention']}':")
+        for c in m["candidates"][:5]:
+            lines.append(f"  - {c['node_type']} '{c['value']}' "
+                         f"(case {c['case_fir'] or c['case_id']}, "
+                         f"confidence {c['confidence']:.0%})")
+    lines.append("Re-ask with the full name as shown, in quotes.")
+    return {
+        "question": question, "intent": "graph", "generated": False,
+        "unanswerable": True, "answer_text": "\n".join(lines),
+        "node_ids": [], "edge_ids": [], "rows": [],
+        "cypher_shown": "", "confidence": 0.0,
+        "explanation": "Entity disambiguation required; no query ran.",
+    }
+
+
+def _answer_nl_question(request, question, case_ids):
+    """Prep (temporal + mentions) -> Stage 1 -> Stage 2 gate -> Stage 3."""
+    context, forced_params, ambiguities = build_question_context(question, list(case_ids))
+    if ambiguities:
+        _audit_graph_query(request, False, "", reason="disambiguation",
+                           case_ids=case_ids)
+        return Response(_disambiguation_answer(question, ambiguities))
+    try:
+        candidate = generate_cypher(question, context)
+    except GenerationUnavailable as exc:
+        _audit_graph_query(request, False, "", reason="generation-unavailable",
+                           case_ids=case_ids)
+        return Response(_unanswerable(
+            question,
+            "Graph NL understanding is not available right now.",
+            f"Stage 1 could not produce a candidate ({exc}). Nothing ran."))
+    if candidate["unanswerable"]:
+        _audit_graph_query(request, False, candidate["cypher"],
+                           reason="model-unanswerable", case_ids=case_ids)
+        return Response(_unanswerable(
+            question,
+            (candidate["explanation"]
+             or "I can't turn that question into a graph query yet."),
+            "The model declined to answer; nothing executed.",
+            cypher=candidate["cypher"]))
+    # Candidate query: the SAME verifier gate as hand-written Cypher.
+    # Server-resolved dates win over anything the model put in params.
+    try:
+        result = run_graph_query(candidate["cypher"], list(case_ids),
+                                 extra_params={**candidate["params"], **forced_params},
+                                 timeout_s=QUERY_TIMEOUT_S)
+    except CypherRejected as exc:
+        _audit_graph_query(request, False, candidate["cypher"],
+                           reason=f"verifier-rejected:{exc.reason}",
+                           case_ids=case_ids)
+        return Response(_unanswerable(
+            question, str(exc),
+            f"Model output failed verification ({exc.reason}); nothing executed.",
+            cypher=candidate["cypher"]))
+    except GraphUnavailable as exc:
+        _audit_graph_query(request, False, candidate["cypher"],
+                           reason="graph-unavailable", case_ids=case_ids)
+        return Response(_unanswerable(
+            question, f"Graph database unavailable: {exc}",
+            "Verified, but Neo4j is unreachable — no cached results shown.",
+            cypher=candidate["cypher"]))
+    counts = result["counts"]
+    _audit_graph_query(request, True, result["cypher"], reason="",
+                       counts=counts, case_ids=case_ids)
+    n, e = counts["nodes"], counts["edges"]
+    return Response({
+        "question": question, "intent": "graph", "generated": True,
+        "unanswerable": False,
+        "answer_text": (f"Matched {n} node(s), {e} edge(s) across "
+                        f"{len(case_ids)} visible case(s). {candidate['explanation']}"),
+        "node_ids": result["node_ids"], "edge_ids": result["edge_ids"],
+        "rows": result["rows"][:100],
+        "cypher_shown": result["cypher"], "confidence": candidate["confidence"],
+        "explanation": candidate["explanation"],
+    })
+
+
+def _audit_graph_query(request, accepted, cypher, reason="", counts=None, case_ids=None):
+    """Copilot graph-query audit row — same model + pattern as the middleware.
+
+    The middleware only sees method+path+status; the query text, the
+    accept/reject verdict, and the scope need an explicit row. Best-effort,
+    exactly like the middleware (never breaks the request).
+    """
+    try:
+        from apps.auditlog.models import AuditLog
+        actor = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
+        AuditLog.objects.create(
+            actor=actor,
+            action="read-sensitive",
+            object_type="/api/copilot/graph-query/",
+            object_id="",
+            before={},
+            after={"accepted": accepted, "reason": reason,
+                   "cypher": (cypher or "")[:500],
+                   "counts": counts or {},
+                   "cases": list(case_ids or [])},
+            ip=request.META.get("REMOTE_ADDR"),
+        )
+    except Exception:
+        pass
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([GraphQueryThrottle])
+def graph_query(request):
+    """Conversational graph querying (Stage 2 gate + Stage 3 execution).
+
+    Accepts hand-written `{cypher, params?, case_id?}` (deterministic path,
+    no LLM) or `{question, case_id?}` (Stage 1 generation at temperature 0,
+    then the SAME verifier gate — model output never executes raw). Every
+    call is verified, case-scoped server-side, timed out, throttled, and
+    audit-logged. Exactly one LLM call per question; no agentic loops.
+    """
+    question = str(request.data.get("question") or "").strip()[:1000]
+    cypher = str(request.data.get("cypher") or "").strip()[:4000]
+    params = request.data.get("params") or {}
+    if params and not isinstance(params, dict):
+        return Response({"detail": "params must be a JSON object."}, status=400)
+    case_ids, err = _scope(request, request.data.get("case_id"))
+    if err:
+        return err
+    if case_ids is None:
+        # SHO (sees all): resolve to explicit ids — the injector always gets
+        # a concrete list, never "no filter".
+        case_ids = list(Case.objects.values_list("id", flat=True))
+    if not cypher:
+        if question:
+            return _answer_nl_question(request, question, case_ids)
+        return Response({"detail": "cypher or question is required."}, status=400)
+    try:
+        result = run_graph_query(cypher, list(case_ids), extra_params=params,
+                                 timeout_s=QUERY_TIMEOUT_S)
+    except CypherRejected as exc:
+        _audit_graph_query(request, False, cypher, reason=exc.reason, case_ids=case_ids)
+        return Response({
+            "question": question, "intent": "graph", "generated": False,
+            "unanswerable": True,
+            "answer_text": str(exc),
+            "node_ids": [], "edge_ids": [], "rows": [],
+            "cypher_shown": cypher, "confidence": 0.0,
+            "explanation": f"Verifier rejected the query ({exc.reason}).",
+        })
+    except GraphUnavailable as exc:
+        _audit_graph_query(request, False, cypher, reason="graph-unavailable",
+                           case_ids=case_ids)
+        return Response({
+            "question": question, "intent": "graph", "generated": False,
+            "unanswerable": True,
+            "answer_text": f"Graph database unavailable: {exc}",
+            "node_ids": [], "edge_ids": [], "rows": [],
+            "cypher_shown": cypher,
+            "confidence": 0.0,
+            "explanation": "Verified, but Neo4j is unreachable — no cached results shown.",
+        })
+    counts = result["counts"]
+    _audit_graph_query(request, True, result["cypher"], reason="",
+                       counts=counts, case_ids=case_ids)
+    n, e = counts["nodes"], counts["edges"]
+    return Response({
+        "question": question, "intent": "graph", "generated": False,
+        "unanswerable": False,
+        "answer_text": (f"Matched {n} node(s), {e} edge(s) across "
+                        f"{len(case_ids)} visible case(s)."),
+        "node_ids": result["node_ids"], "edge_ids": result["edge_ids"],
+        "rows": result["rows"][:100],
+        "cypher_shown": result["cypher"], "confidence": 1.0,
+        "explanation": ("Hand-supplied query, verified read-only + case-scoped, "
+                        "executed deterministically (1.0 = execution, not a model estimate)."),
+    })
 
 
 def _answer_generic(request, case_ids, question):
