@@ -12,11 +12,13 @@ class EvidenceSerializer(serializers.ModelSerializer):
             "id", "case", "file_name", "file_type", "mime_type", "size_bytes",
             "sha256", "storage_key", "uploaded_by", "classification",
             "classification_confidence", "ocr_status", "ocr_pages", "ocr_engine",
+            "detected_language", "detected_language_confidence", "extraction_status",
             "processing_error", "created_at", "updated_at",
         )
         read_only_fields = (
             "id", "sha256", "storage_key", "uploaded_by", "classification",
             "classification_confidence", "ocr_status", "ocr_pages", "ocr_engine",
+            "detected_language", "detected_language_confidence", "extraction_status",
             "processing_error", "created_at", "updated_at",
         )
 

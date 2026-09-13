@@ -10,8 +10,11 @@ approval per §4.1):
   Location/Organization: exact -> 0.90; difflib >= 0.85 -> scaled.
   Event: never auto-suggested (time-bound, matched exactly in graph writes).
 
-Transliteration (IndicXlit, requirements-ml.txt) plugs into `transliterate()`
-behind a lazy import; until then matching is script-exact plus normalization.
+Cross-script matching goes through `transliterate()` (IndicXlit, lazy): when
+both names are Latin the fallback is a no-op and scoring is byte-identical
+to script-exact matching; when IndicXlit is absent the function is the
+identity and nothing changes. Only Person pairs use the fallback (places
+and orgs transliterate too noisily for merge-grade claims).
 """
 from __future__ import annotations
 
@@ -25,11 +28,72 @@ SUGGEST_THRESHOLD = 0.75
 AUTO_MERGE_THRESHOLD = 0.99  # reserved: even phone-anchors need confirmation in Phase 3
 
 
+# Unicode block starts per Indic script -> Xlit lang code (first hit wins).
+# Devanagari serves hi/mr/ne; "hi" is the documented approximation for
+# matching purposes only (never persisted, never shown).
+_SCRIPT_LANG = [
+    (0x0900, 0x097F, "hi"),   # Devanagari
+    (0x0980, 0x09FF, "bn"),   # Bengali (+Assamese range overlap)
+    (0x0A00, 0x0A7F, "pa"),   # Gurmukhi
+    (0x0A80, 0x0AFF, "gu"),   # Gujarati
+    (0x0B00, 0x0B7F, "or"),   # Odia
+    (0x0B80, 0x0BFF, "ta"),   # Tamil
+    (0x0C00, 0x0C7F, "te"),   # Telugu
+    (0x0C80, 0x0CFF, "kn"),   # Kannada
+    (0x0D00, 0x0D7F, "ml"),   # Malayalam
+]
+
+_XLIT_INDIC2EN = None  # engine singleton, or False when unavailable
+
+
+def _guess_lang(text: str) -> str | None:
+    for ch in text or "":
+        o = ord(ch)
+        for lo, hi, lang in _SCRIPT_LANG:
+            if lo <= o <= hi:
+                return lang
+    return None
+
+
+def _indic2en_engine():
+    global _XLIT_INDIC2EN
+    if _XLIT_INDIC2EN is None:
+        try:
+            # Real v1.x API (ai4bharat-transliteration 1.1.3): factory with
+            # src_script_type="indic"; .translit_sentence(text, lang) -> str.
+            # Construction downloads weights on first use and calls exit()
+            # on failure — hence BaseException.
+            from ai4bharat.transliteration import XlitEngine
+            _XLIT_INDIC2EN = XlitEngine(src_script_type="indic")
+        except BaseException as exc:
+            log.debug("indicxlit indic2en unavailable: %s", str(exc)[:120])
+            _XLIT_INDIC2EN = False
+    return _XLIT_INDIC2EN or None
+
+
 def transliterate(text: str, target_script: str = "latin") -> str:
-    """Normalize names across scripts (Devanagari <-> Latin). Falls back to input."""
+    """Normalize names across scripts (Indic -> Latin). Falls back to input.
+
+    Only target_script="latin" is implemented (the matching direction).
+    Pure-ASCII input returns immediately without touching the engine.
+    Never raises.
+    """
+    if not text or target_script != "latin":
+        return text
     try:
-        from indicxlib import indicxlit  # type: ignore  # requirements-ml.txt
-        raise ImportError  # placeholder wiring — real call once the dep is pinned
+        if text.isascii():
+            return text
+    except Exception:
+        return text
+    lang = _guess_lang(text)
+    if lang is None:
+        return text
+    engine = _indic2en_engine()
+    if engine is None:
+        return text
+    try:
+        out = engine.translit_sentence(text, lang)
+        return out.strip() if isinstance(out, str) and out.strip() else text
     except Exception:
         return text
 
@@ -38,7 +102,8 @@ def _tokens(norm: str) -> list[str]:
     return [t for t in re.split(r"[\s.\-]+", norm) if t]
 
 
-def person_score(a: str, b: str) -> tuple[float, str]:
+def _person_score_latin(a: str, b: str) -> tuple[float, str]:
+    """Latin-script person scoring (exact/initial/subset/fuzzy)."""
     if a == b:
         return 0.95, "exact-name"
     ta, tb = _tokens(a), _tokens(b)
@@ -63,6 +128,27 @@ def person_score(a: str, b: str) -> tuple[float, str]:
     score = 0.5 * ratio + 0.5 * overlap
     if score >= 0.75:
         return round(min(score, 0.94), 3), "fuzzy-name"
+    return 0.0, ""
+
+
+def person_score(a: str, b: str) -> tuple[float, str]:
+    """Person matching with a cross-script fallback.
+
+    Same-script pairs (and everything when IndicXlit is absent) score exactly
+    as before. When the pair spans scripts AND transliteration changes at
+    least one side, the transliterated forms re-enter Latin scoring capped at
+    0.85 ("xlit-" reasons) — below exact-name (0.95), so a transliteration
+    guess can suggest but never outrank a true exact match.
+    """
+    score, reason = _person_score_latin(a, b)
+    if score > 0.0:
+        return score, reason
+    ta, tb = transliterate(a), transliterate(b)
+    if ta == a and tb == b:
+        return 0.0, ""
+    score, reason = _person_score_latin(ta, tb)
+    if score > 0.0:
+        return round(min(score, 0.85), 3), f"xlit-{reason}"
     return 0.0, ""
 
 

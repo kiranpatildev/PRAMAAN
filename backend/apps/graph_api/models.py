@@ -30,7 +30,11 @@ class ExtractedEntity(models.Model):
     value = models.CharField(max_length=512)  # display form, first-seen
     normalized = models.CharField(max_length=512, db_index=True)
     confidence = models.FloatField(default=0.0)
-    engine = models.CharField(max_length=32, blank=True, default="")  # regex|spacy|transformers
+    engine = models.CharField(max_length=32, blank=True, default="")  # regex|spacy|indic-ner|regex-name
+    # Native-script source sentence (Indic path only): evidentiary traceability
+    # for entities whose value came from transliterated/normalized text. The
+    # raw OCR text stays untouched on Evidence.ocr_text.
+    native_snippet = models.TextField(blank=True, default="")
     status = models.CharField(max_length=16, choices=ReviewStatus.choices, default=ReviewStatus.PENDING)
     mention_count = models.IntegerField(default=1)
     merged_into = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="merged_from")

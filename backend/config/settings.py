@@ -153,6 +153,14 @@ RAG_TOP_K = int(os.environ.get("RAG_TOP_K", "6"))
 # change, not a rewrite — apps/icjs only ever reads this setting.
 ICJS_MOCK_BASE_URL = os.environ.get("ICJS_MOCK_BASE_URL", "http://mock-icjs:9090")
 
+# Multilingual NER (Phase 3): HuggingFace checkpoint for the Indic path.
+# Default ai4bharat/IndicNER is ACCESS-GATED (requires HF approval) — without
+# access the loader raises IndicUnavailable and extraction records
+# "unsupported_language" instead of guessing. Override with any public
+# token-classification checkpoint (e.g. a per-language NER model) — the
+# loader reads id2label dynamically and skips labels outside PER/LOC/ORG.
+INDIC_NER_MODEL_ID = os.environ.get("INDIC_NER_MODEL_ID", "ai4bharat/IndicNER")
+
 SPECTACULAR_SETTINGS = {"TITLE": "PRAMAAN API", "VERSION": "0.1.0 (Phase 1)"}
 
 # Channels (Phase 7: redis-backed so worker <-> web fan-out crosses processes).

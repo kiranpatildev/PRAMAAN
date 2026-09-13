@@ -6,11 +6,16 @@ from .models import ExtractedEntity, ExtractedRelation, GraphSnapshot, MergeSugg
 class ExtractedEntitySerializer(serializers.ModelSerializer):
     evidence_file = serializers.CharField(source="evidence.file_name", read_only=True, default="")
     case_fir = serializers.CharField(source="case.fir_no", read_only=True)
+    # Denormalized read of the evidence's persisted detection (evidence may be
+    # null after deletes; default "" keeps the contract total).
+    detected_language = serializers.CharField(source="evidence.detected_language",
+                                              read_only=True, default="")
 
     class Meta:
         model = ExtractedEntity
         fields = ("id", "case", "case_fir", "evidence", "evidence_file", "node_type",
                   "value", "normalized", "confidence", "engine", "status",
+                  "native_snippet", "detected_language",
                   "mention_count", "merged_into", "graph_key", "updated_at")
         read_only_fields = fields
 

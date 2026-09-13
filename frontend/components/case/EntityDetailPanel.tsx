@@ -7,6 +7,7 @@ import { Button } from "../ui/Button";
 import { Empty } from "../ui/Empty";
 import { EntityChip, entityKind } from "@/lib/case";
 import { longDate } from "@/lib/format";
+import { languageName } from "@/lib/language";
 import type { ReviewRelation, TimelineEvent } from "@/lib/types";
 
 export interface EntityRow {
@@ -20,6 +21,8 @@ export interface EntityRow {
   mention_count?: number;
   evidence?: number | null;
   evidence_file?: string;
+  native_snippet?: string;
+  detected_language?: string;
   case_id?: number;
   case_fir?: string;
   updated_at?: string;
@@ -105,7 +108,12 @@ export function EntityDetailPanel({ entity, relations, events, evidenceNote, can
     <div className="p-[14px]">
       <p className="flex items-center justify-between gap-2">
         <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-cyan">E-{entity.id}</span>
-        <Tag tone={stateTone(entity.status)}>{entity.status}</Tag>
+        <span className="flex items-center gap-[6px]">
+          {entity.detected_language ? (
+            <Tag tone="cyan">Detected: {languageName(entity.detected_language)}</Tag>
+          ) : null}
+          <Tag tone={stateTone(entity.status)}>{entity.status}</Tag>
+        </span>
       </p>
       <h2 className="mt-[6px] text-[16px] font-medium tracking-[-0.015em] text-fg">{entity.value}</h2>
 
@@ -163,6 +171,14 @@ export function EntityDetailPanel({ entity, relations, events, evidenceNote, can
               {entity.mention_count ? <> · mentioned {entity.mention_count}×</> : null}
               {entity.updated_at ? <> · last observed {longDate(entity.updated_at)}</> : null}.
             </p>
+            {entity.native_snippet ? (
+              <>
+                <p className="micro-label mb-[6px] mt-4">Source excerpt (native script)</p>
+                <p className="rounded border border-line bg-panel px-[10px] py-[8px] text-[12.5px] leading-[1.6] text-fg-2">
+                  {entity.native_snippet}
+                </p>
+              </>
+            ) : null}
             <p className="micro-label mb-[6px] mt-4">Strongest observed relationships</p>
             {top.length === 0 ? (
               <p className="text-[12.5px] text-fg-3">No confirmed links yet.</p>

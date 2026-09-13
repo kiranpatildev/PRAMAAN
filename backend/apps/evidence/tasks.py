@@ -105,7 +105,15 @@ def run_ocr(evidence_id: int) -> dict:
     ev.ocr_engine = result.get("engine", "")
     ev.ocr_status = result.get("status", "failed")
     ev.processing_error = result.get("error", "")
-    ev.save(update_fields=["ocr_text", "ocr_pages", "ocr_engine", "ocr_status", "processing_error", "updated_at"])
+    # Language detection runs immediately on the obtained text (before NER),
+    # and the code is persisted — never discarded. Empty text stays blank.
+    # language.detect_language() never raises.
+    from apps.graph_api.services.language import detect_language
+    det = detect_language(ev.ocr_text) if (ev.ocr_text or "").strip() else None
+    ev.detected_language = det["code"] if det else ""
+    ev.detected_language_confidence = det["confidence"] if det else 0.0
+    ev.save(update_fields=["ocr_text", "ocr_pages", "ocr_engine", "ocr_status", "processing_error",
+                           "detected_language", "detected_language_confidence", "updated_at"])
     ChainOfCustody.log(ev, None, CustodyAction.OCR_COMPLETED,
                        {"engine": ev.ocr_engine, "status": ev.ocr_status,
                         "pages": ev.ocr_pages, "chars": len(ev.ocr_text)})

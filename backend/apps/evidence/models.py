@@ -37,6 +37,12 @@ class Evidence(models.Model):
     ocr_text = models.TextField(blank=True, default="")
     ocr_pages = models.IntegerField(default=0)
     ocr_engine = models.CharField(max_length=32, blank=True, default="")  # raw-text|pypdf-text|paddleocr
+    # Multilingual routing (persisted, never discarded): ISO-639 code from
+    # langdetect ("" = unknown/too-short), its profile score, and the NER
+    # outcome — "" (not run) | ok | unsupported_language | skipped-empty | failed.
+    detected_language = models.CharField(max_length=16, blank=True, default="")
+    detected_language_confidence = models.FloatField(default=0.0)
+    extraction_status = models.CharField(max_length=32, blank=True, default="")
     processing_error = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -44,6 +44,8 @@ export interface Entity {
   lastObs?: string;
   evidence_file?: string;
   engine?: string;
+  native_snippet?: string;
+  detected_language?: string;
 }
 
 export interface Evidence {
@@ -62,6 +64,9 @@ export interface Evidence {
   status?: string;
   ocr_engine?: string;
   ocr_pages?: number;
+  detected_language?: string;
+  detected_language_confidence?: number;
+  extraction_status?: string;
   processing_error?: string;
   created_at: string;
   uploaded?: string;

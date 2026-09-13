@@ -10,12 +10,16 @@ OCR → NER → relations → resolve → index. Trigger: upload view
 flowchart LR
     B[bytes in MinIO] --> C[classify_file<br/>heuristics]
     B --> O[run_ocr<br/>raw-text → pypdf → PaddleOCR?]
-    O --> T[(Evidence.ocr_text)]
-    T --> E[extract_entities<br/>regex → spaCy → name fallback]
+    O --> T[(Evidence.ocr_text<br/>+ detected_language)]
+    T --> D{route?}
+    D -->|en / untrusted| E[extract_entities<br/>regex → spaCy → name fallback]
+    D -->|trusted Indic| N[indic path<br/>regex → IndicNER + Xlit]
+    D -->|trusted, no model| U[(unsupported_language<br/>nothing extracted)]
     E --> RQ[(review queue<br/>PENDING entities)]
+    N --> RQ
     T --> R[extract_relations<br/>verb patterns + dates]
     R --> RQ2[(PENDING relations)]
-    RQ --> RS[resolve_entities<br/>blocking + scoring]
+    RQ --> RS[resolve_entities<br/>blocking + scoring + xlit fallback]
     RS --> MS[(MergeSuggestions)]
     T --> I[index_evidence<br/>chunk + embed?]
     I --> CH[(DocumentChunks)]
@@ -53,26 +57,69 @@ can replace `classify()` behind its `{label, confidence, reason}` contract.
 4. Anything else (audio etc.): `skipped`. Exceptions: `failed` with the
    error recorded — never raised.
 
-## 4. `extract_entities` — NER
+## 4. `extract_entities` — NER (multilingual)
 
-`graph_api/services/extract.py`, layered cheap→expensive, regex spans always
-win over model spans (overlap suppressed):
+`run_ocr` persists `detected_language` (+ confidence) on the evidence row
+the moment text is obtained; the NER task re-detects for routing and
+backfills old rows. `language.py` owns detection/routing, `indic_extract.py`
+owns the Indic path, `extract.extract_for_evidence()` is the single router:
 
-- **Regex** (deterministic, Indian-context): `+91`/10-digit phones 0.95,
-  Indian plates (`MH12AB1234` shapes) 0.90.
-- **spaCy** `en_core_web_sm` (downloaded in the backend Dockerfile; absent →
-  regex-only mode with a warning): PERSON 0.75 (multi-token) / 0.55
-  (single-token), ORG 0.65, GPE/LOC/FAC 0.65. Small-model noise is
-  suppressed by design: phones/amounts it tags DATE are ignored (regex
-  owns them), single-token PERSON/ORG matching a known full name folds
-  into that person, ALL-CAPS noise tokens (UTR/FIR/CDR/…) are dropped.
-- **Name fallback** (`regex-name`, 0.50): two/three capitalized words minus
-  a stop-word list — catches Indian names the small English model misses
-  in noisy contexts (parentheticals, PRODUCT mistags).
-- ⚠️ Stub: the docstring describes a `transformers`/IndicBERT third layer
-  (`extract_hf()`), but **no such function exists** — HF/IndicBERT and the
-  `transliterate()` IndicXlit placeholder in `resolve.py` (raises
-  ImportError) are documented future hooks, not code paths.
+- **English path** (English, untrusted/short/empty, or trusted non-Indic on
+  Latin script): `extract_entities`, frozen behavior —
+  - **Regex** (deterministic, Indian-context): `+91`/10-digit phones 0.95,
+    Indian plates (`MH12AB1234` shapes) 0.90.
+  - **spaCy** `en_core_web_sm` (downloaded in the backend Dockerfile; absent →
+    regex-only mode with a warning): PERSON 0.75 (multi-token) / 0.55
+    (single-token), ORG 0.65, GPE/LOC/FAC 0.65. Small-model noise is
+    suppressed by design: phones/amounts it tags DATE are ignored (regex
+    owns them), single-token PERSON/ORG matching a known full name folds
+    into that person, ALL-CAPS noise tokens (UTR/FIR/CDR/…) are dropped.
+  - **Name fallback** (`regex-name`, 0.50): two/three capitalized words minus
+    a stop-word list — catches Indian names the small English model misses
+    in noisy contexts (parentheticals, PRODUCT mistags).
+- **Indic path** (trusted hi/mr/bn/ta/te/kn/ml/gu/pa/or/as): deterministic
+  regex (phones/plates) + **IndicNER** (`ai4bharat/IndicNER`,
+  `settings.INDIC_NER_MODEL_ID`-overridable) via transformers, lazy-loaded
+  once per worker. Romanized fragments are normalized through **IndicXlit**
+  first (fully native sentences skip it). Confidences are the model's own
+  per-token softmax means — zero literals. Labels map explicitly
+  (PER/PERSON/NEP→Person, LOC/LOCATION/GPE/NEL→Location,
+  ORG/ORGANIZATION/NEO→Organization); anything else is skipped with a
+  warning. Each row keeps its native-script sentence (`native_snippet`);
+  single-token fragments of a seen full name fold like the English path.
+  Same `ExtractedEntity` shape → review queue, confirm/reject, and the
+  Neo4j writer are untouched.
+- **Unsupported** (trusted non-Latin text, model missing/gated/failed):
+  `extraction_status = "unsupported_language"`, zero rows — never spaCy
+  garbage presented as results. Romanized-only Hindi misdetects as
+  Indonesian and stays on the English path (documented limitation, not a
+  silent error).
+- **Relations on Indic text**: the unchanged sentence engine runs over the
+  confirmed-shape rows. Verb lexicons/money patterns are English, so Indic
+  text yields mostly `PRESENT_AT` + co-occurrence `ASSOCIATED_WITH` edges;
+  verb localization is tracked follow-up work, stated here instead of
+  hidden.
+- **Resolution**: `transliterate()` is real IndicXlit now (native→Latin,
+  lazy, identity without the dep). `person_score` adds a capped (≤0.85)
+  `xlit-*` fallback for cross-script pairs; same-script scoring is
+  byte-identical to before.
+
+### 4.1 Deployment footprint (measured 2026-09-13, Windows CPU worker)
+
+| Setup | Load time | RSS after load | Inference / evidence |
+|---|---|---|---|
+| Base (no ML) | — | ~76 MB | — |
+| torch 2.14 CPU import | 3.6 s | ~205 MB | — |
+| + XLM-R-base NER (~1.1 GB weights) | ~20–33 s | ~1.48 GB | 0.14–0.67 s |
+| + mBERT-base NER (~420 MB weights) | ~6 s | ~0.96 GB | 0.15–0.18 s |
+
+`ai4bharat/IndicNER` is mBERT-sized (~670 MB weights) so budget the mBERT
+row; both models resident ≈ sum. IndicXlit (fairseq transformer + downloads
+on first use) was NOT measured here (no Windows wheel for fairseq) —
+budget ~0.5 GB weights + ~0.5 GB RAM on top until measured in the ML
+image. Rule of thumb: **2 GB worker RAM with headroom (2.5 GB limit)** for
+torch + IndicNER + IndicXlit. Without the ML stack the worker stays light
+and extraction degrades to `unsupported_language` honestly.
 
 Normalization (`normalize_value`) is shared by extraction, resolution, and
 Neo4j keys: phones → last 10 digits (91-prefix stripped), plates →

@@ -26,3 +26,7 @@ google-genai>=1.0
 # model is absent; HF/IndicBERT stay in requirements-ml.txt behind lazy imports.
 neo4j>=5.20
 spacy>=3.7
+# Language detection for extraction routing (pure-python, ~1MB, no model
+# download — profiles ship in the wheel). Always installed: routing must work
+# in the base image, not just ML builds.
+langdetect==1.0.9

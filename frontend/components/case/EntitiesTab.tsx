@@ -193,6 +193,9 @@ export function EntitiesTab({ caseId: cid, sho, canVerify }: {
                       <span className="min-w-0">
                         <b className="block truncate text-[12.5px] font-medium text-fg">{e.value}</b>
                         <span className="block truncate font-mono text-[10.5px] text-fg-4">{e.normalized ?? `#${e.id}`}</span>
+                        {e.native_snippet ? (
+                          <span className="block truncate text-[11.5px] text-fg-3">{e.native_snippet}</span>
+                        ) : null}
                       </span>
                     </span>
                   ),

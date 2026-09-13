@@ -12,11 +12,26 @@
 paddlepaddle>=3.0,<3.2
 paddleocr>=2.7
 
-# NLP / NER (Phase 3): spaCy + Transformers + Indic models (AI4Bharat IndicBERT/IndicXlit)
+# NLP / NER (Phase 3): spaCy + Transformers + Indic models (AI4Bharat IndicNER/IndicXlit)
 spacy>=3.7
 transformers>=4.40
 sentencepiece>=0.2
 torch>=2.3  # CPU wheel; prefer --index-url https://download.pytorch.org/whl/cpu
+# Multilingual extraction (Phase 3): language-routed Indic NER + transliteration.
+#   ai4bharat-transliteration==1.1.3 — IndicXlit transformer (roman<->native);
+#     downloads ~0.5GB weights from GitHub releases on FIRST USE (cached under
+#     ~/.AI4Bharat_Xlit_Models or the package dir); needs fairseq+indic-nlp deps.
+#   ai4bharat/IndicNER (NOT pip — HF checkpoint, mBERT-sized ~670MB weights):
+#     ACCESS-GATED, request approval; override via INDIC_NER_MODEL_ID.
+# Memory budget: see docs/architecture/ai-pipeline.md §4.1 (measured numbers).
+# Without these, extraction records "unsupported_language" — never guesses.
+ai4bharat-transliteration==1.1.3
+fairseq==0.12.2  # IndicXlit transformer backend (source build; wheels vary by platform)
+indic-nlp-library==0.92
+ujson==5.10.0
+pydload==1.3.4
+tqdm==4.67.1
+urduhack==1.1.0  # Shahmukhi normalization used by the Xlit preprocessor
 
 # ML analytics (Phase 5): scikit-learn pulls scipy/numpy
 scikit-learn>=1.5

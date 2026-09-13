@@ -14,6 +14,7 @@ import {
   evidenceDownload, reprocessEvidence,
 } from "@/lib/endpoints";
 import { auditDate, fmtBytes, longDate } from "@/lib/format";
+import { languageName } from "@/lib/language";
 import { useToast } from "../ui/Toast";
 import type { Evidence } from "@/lib/types";
 
@@ -36,6 +37,7 @@ const TYPE_META: Record<string, { icon: typeof FileText; color: string }> = {
 
 function statusOf(e: Evidence): { label: string; tone: "green" | "amber" | "red" | "muted" } {
   if (e.processing_error) return { label: "failed", tone: "red" };
+  if (e.extraction_status === "unsupported_language") return { label: "unsupported language", tone: "amber" };
   if (e.ocr_status === "done") return { label: "verified", tone: "green" };
   if (e.ocr_status === "processing") return { label: "processing", tone: "amber" };
   return { label: "queued", tone: "muted" };
@@ -211,6 +213,15 @@ export function EvidenceTab({ caseId: cid, sho, canContribute }: {
                 },
               },
               { key: "type", head: "Type", render: (e) => <span className="font-mono text-[11.5px]">{e.classification || e.file_type}</span> },
+              {
+                key: "lang",
+                head: "Lang",
+                render: (e) => (
+                  <span className="font-mono text-[11px] text-fg-3">
+                    {e.detected_language ? languageName(e.detected_language) : "—"}
+                  </span>
+                ),
+              },
               { key: "size", head: "Size", numeric: true, render: (e) => <span>{fmtBytes(e.size_bytes)}</span> },
               { key: "source", head: "Source", render: (e) => <span>{e.source ?? "upload"}</span> },
               { key: "by", head: "Uploaded by", render: (e) => <span>{e.uploaded_by ?? e.by ?? "—"}</span> },

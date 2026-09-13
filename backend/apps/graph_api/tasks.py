@@ -99,7 +99,8 @@ def _post_build_alerts(case) -> None:
 @shared_task
 def extract_entities(evidence_id: int) -> dict:
     from apps.evidence.models import Evidence
-    from apps.graph_api.services.extract import extract_entities as run_extract
+    from apps.graph_api.services.extract import extract_for_evidence
+    from apps.graph_api.services.language import detect_language
     from .models import ExtractedEntity
 
     try:
@@ -108,22 +109,40 @@ def extract_entities(evidence_id: int) -> dict:
         return {"evidence_id": evidence_id, "stage": "ner", "status": "missing"}
     text = (ev.ocr_text or "").strip()
     if not text:
+        ev.extraction_status = "skipped-empty"
+        ev.save(update_fields=["extraction_status", "updated_at"])
         return {"evidence_id": evidence_id, "stage": "ner", "status": "skipped-empty"}
     try:
-        found = run_extract(text, source_evidence_id=ev.id)
+        # Detection is re-run for routing (cheap, deterministic); rows written
+        # before this feature get their language backfilled here.
+        det = detect_language(text)
+        if not ev.detected_language:
+            ev.detected_language = det["code"]
+            ev.detected_language_confidence = det["confidence"]
+            ev.save(update_fields=["detected_language", "detected_language_confidence", "updated_at"])
+        found, status, det = extract_for_evidence(text, det, source_evidence_id=ev.id)
+        ev.extraction_status = status
+        ev.save(update_fields=["extraction_status", "updated_at"])
+        if status == "unsupported_language":
+            return {"evidence_id": ev.id, "stage": "ner", "status": "unsupported_language",
+                    "language": det["code"], "entities": 0}
         counts: dict[str, int] = {}
         for ent in found:
             obj, created = ExtractedEntity.objects.get_or_create(
                 case=ev.case, node_type=ent["node_type"], normalized=ent["normalized"],
                 defaults={"evidence": ev, "value": ent["value"],
-                          "confidence": ent["confidence"], "engine": ent["engine"]},
+                          "confidence": ent["confidence"], "engine": ent["engine"],
+                          "native_snippet": ent.get("native_snippet", "")},
             )
             if not created:
                 obj.mention_count += 1
                 if ent["confidence"] > obj.confidence:
                     obj.confidence = ent["confidence"]
                     obj.engine = ent["engine"]
-                obj.save(update_fields=["mention_count", "confidence", "engine", "updated_at"])
+                    if ent.get("native_snippet"):
+                        obj.native_snippet = ent["native_snippet"]
+                obj.save(update_fields=["mention_count", "confidence", "engine",
+                                        "native_snippet", "updated_at"])
             else:
                 try:
                     from apps.graph_api.services.geo import attach_gazetteer  # auto-pin known places
@@ -136,7 +155,7 @@ def extract_entities(evidence_id: int) -> dict:
         except Exception:
             log.exception("cross-case check failed for evidence %s", ev.id)
         return {"evidence_id": ev.id, "stage": "ner", "status": "ok",
-                "entities": len(found), "label_counts": counts}
+                "language": det["code"], "entities": len(found), "label_counts": counts}
     except Exception as exc:
         log.exception("extract_entities failed for %s", evidence_id)
         return {"evidence_id": evidence_id, "stage": "ner", "status": "failed", "error": str(exc)[:300]}
