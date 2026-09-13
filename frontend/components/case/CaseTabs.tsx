@@ -2,7 +2,7 @@
 
 export type CaseTabId =
   | "overview" | "team" | "evidence" | "entities" | "network"
-  | "timeline" | "cross" | "notes" | "audit";
+  | "timeline" | "cross" | "notes" | "audit" | "reports" | "analytics";
 
 export interface TabDef {
   id: CaseTabId;

@@ -2,7 +2,7 @@
 from django.core.management.base import BaseCommand
 
 from apps.graph_api.models import ExtractedEntity
-from apps.graph_api.views_geo import attach_gazetteer
+from apps.graph_api.services.geo import attach_gazetteer
 
 
 class Command(BaseCommand):

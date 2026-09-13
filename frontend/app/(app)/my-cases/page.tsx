@@ -93,10 +93,16 @@ export default function MyCasesPage() {
               key: "access",
               head: "Access",
               render: (c) => {
-                const onTeam =
-                  meId != null &&
-                  ((c.assignments ?? []).some((a) => a.user.id === meId) || c.owner?.id === meId);
-                return onTeam ? <Tag tone="violet">Edit</Tag> : <Tag tone="muted">Read</Tag>;
+                if (meId != null && c.owner?.id === meId) return <Tag tone="violet">Owner</Tag>;
+                const mine = meId != null ? (c.assignments ?? []).find((a) => a.user.id === meId) : undefined;
+                if (mine) {
+                  const p = (mine.permission ?? "edit").toLowerCase();
+                  if (p === "view") return <Tag tone="muted">View</Tag>;
+                  if (p === "admin") return <Tag tone="violet">Admin</Tag>;
+                  return <Tag tone="violet">Edit</Tag>;
+                }
+                // Visible but not assigned (e.g. SHO oversight) — not a "read grant".
+                return <Tag tone="muted">Oversight</Tag>;
               },
             },
           ]}

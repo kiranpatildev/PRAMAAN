@@ -37,7 +37,6 @@ export default function LoginPage() {
   const [door, setDoor] = useState<Door | null>("investigator");
   const [username, setUsername] = useState("inv_demo");
   const [password, setPassword] = useState("Pramaan123!");
-  const [use2fa, setUse2fa] = useState(false);
   const [code, setCode] = useState("");
   const [preToken, setPreToken] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -192,18 +191,9 @@ export default function LoginPage() {
               <Input id="login-password" className="!h-[34px]" type="password" value={password}
                 onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
             </div>
-            <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-fg-2">
-              <input type="checkbox" checked={use2fa} onChange={(e) => setUse2fa(e.target.checked)}
-                className="h-[14px] w-[14px] accent-[#00d9ff]" />
-              Use 2FA
-            </label>
-            {use2fa && (
-              <div>
-                <label className="mb-[6px] block text-[12.5px] text-fg-2" htmlFor="login-code">Authenticator code</label>
-                <Input id="login-code" className="!h-[34px] font-mono" value={code}
-                  onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="6-digit code" />
-              </div>
-            )}
+            {/* 2FA enrollment is disabled for now. If the server requires a
+                second factor (legacy enabled accounts), the verify form below
+                appears automatically after the password step. */}
             {error && (
               <p className="rounded border border-red-br bg-red-bg px-[12px] py-[10px] text-[12.5px] text-red" role="alert">
                 {error}

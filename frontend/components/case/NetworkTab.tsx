@@ -8,14 +8,16 @@ import { Button } from "../ui/Button";
 import { NetworkGraph } from "./NetworkGraph";
 import { NetworkDetailPanel } from "./NetworkDetailPanel";
 import { GraphSidebar } from "../network/GraphSidebar";
-import { caseGraph, caseRelationships, expandGraph } from "@/lib/endpoints";
+import { buildGraph, caseGraph, caseRelationships, expandGraph } from "@/lib/endpoints";
 import { useToast } from "../ui/Toast";
 import { Share2 } from "lucide-react";
 import type { GraphCanvasHandle, CanvasEdge, CanvasNode } from "../network/GraphCanvas";
+import { SnapshotsPanel } from "./SnapshotsPanel";
 
-export function NetworkTab({ caseId: cid, highlightLabels = [] }: {
+export function NetworkTab({ caseId: cid, highlightLabels = [], canEdit = false }: {
   caseId: string | number;
   highlightLabels?: string[];
+  canEdit?: boolean;
 }) {
   const toast = useToast();
   const canvasRef = useRef<GraphCanvasHandle>(null);
@@ -82,6 +84,15 @@ export function NetworkTab({ caseId: cid, highlightLabels = [] }: {
 
   const selected = nodes.find((n) => n.id === selectedId) ?? null;
 
+  async function onRebuild() {
+    try {
+      await buildGraph(cid);
+      toast({ kind: "ok", title: "Graph rebuild queued", body: "Confirmed rows rebuild in the background." });
+    } catch (err) {
+      toast({ kind: "warn", title: "Rebuild failed", body: err instanceof Error ? err.message : undefined });
+    }
+  }
+
   return (
     <div className="grid grid-cols-[220px_minmax(0,1fr)_320px] gap-[18px] max-[1200px]:grid-cols-[220px_minmax(0,1fr)]">
       <div className="border-r border-line pr-[18px]">
@@ -124,6 +135,16 @@ export function NetworkTab({ caseId: cid, highlightLabels = [] }: {
           />
         )}
         {loading && <p className="mt-2 font-mono text-[11px] text-fg-4">Loading graph…</p>}
+        {canEdit && (
+          <div className="mt-2">
+            <Button variant="ghost" small onClick={onRebuild}>
+              Rebuild graph
+            </Button>
+          </div>
+        )}
+        <div className="mt-[18px]">
+          <SnapshotsPanel caseId={cid} canEdit={canEdit} />
+        </div>
       </div>
 
       <aside className="border-l border-line bg-panel-2 pl-[18px] max-[1200px]:col-span-2 max-[1200px]:border-l-0 max-[1200px]:border-t max-[1200px]:pl-0 max-[1200px]:pt-[18px]">

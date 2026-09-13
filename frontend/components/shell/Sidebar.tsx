@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  LayoutGrid, Folder, ClipboardCheck, Users, Search, Sparkles, Bell, LogOut,
+  LayoutGrid, Folder, ClipboardCheck, Users, Search, Sparkles, Bell, MapPin, LogOut,
 } from "lucide-react";
 import { useSession, refreshSession } from "./useSession";
 import { isSho, roleLabel } from "@/lib/auth";
@@ -19,6 +19,7 @@ const NAV = [
   { href: "/search", label: "Search", icon: Search, count: null },
   { href: "/assistant", label: "AI Assistant", icon: Sparkles, count: null },
   { href: "/alerts", label: "Alerts", icon: Bell, count: "alerts" as const },
+  { href: "/districts", label: "Districts", icon: MapPin, count: null },
 ];
 
 export function Sidebar() {

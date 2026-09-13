@@ -107,29 +107,7 @@ class GraphViewSet(ViewSet):
         except Exception as exc:
             return Response({"detail": f"Broker unavailable: {exc}"[:200]}, status=503)
 
-    def snapshot(self, request, case_pk=None):
-        case, err = self._case_or_403(request, case_pk)
-        if err:
-            return err
-        return Response(GraphService().snapshot(case.id, request.data.get("label", "")))
 
-    def diff(self, request, case_pk=None):
-        case, err = self._case_or_403(request, case_pk)
-        if err:
-            return err
-        return Response(GraphService().diff(case.id, request.query_params.get("from", ""), request.query_params.get("to", "")))
-
-    def what_if(self, request, case_pk=None):
-        case, err = self._case_or_403(request, case_pk)
-        if err:
-            return err
-        return Response(GraphService().what_if(case.id, request.data.get("remove_nodes", [])))
-
-    def timeline(self, request, case_pk=None):
-        case, err = self._case_or_403(request, case_pk)
-        if err:
-            return err
-        return Response(GraphService().timeline(case.id))
 
 
 _DOMAIN_FOR_EDGE = {

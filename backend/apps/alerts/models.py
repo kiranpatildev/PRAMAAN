@@ -43,7 +43,7 @@ class AlertRule(models.Model):
                              help_text="Null = all cases I can see.")
     min_severity = models.CharField(max_length=16, choices=Severity.choices, default=Severity.LOW)
     min_confidence = models.FloatField(default=0.0)
-    email_digest = models.BooleanField(default=False, help_text="Include in the mocked email digest.")
+    email_digest = models.BooleanField(default=False, help_text="Reserved: email digest is disabled (no sender).")
     enabled = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

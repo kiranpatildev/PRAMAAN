@@ -13,7 +13,7 @@ import { longDate } from "@/lib/format";
 import { useToast } from "../ui/Toast";
 import {
   reviewEntities, reviewRelations, reviewMerges,
-  confirmEntity, rejectEntity, decideMerge, caseTimeline,
+  confirmEntity, rejectEntity, decideMerge, decideRelation, caseTimeline,
 } from "@/lib/endpoints";
 import { EntityDetailPanel, type EntityRow, type RelCardData } from "./EntityDetailPanel";
 import type { MergeSuggestion, TimelineEvent } from "@/lib/types";
@@ -52,12 +52,12 @@ export function EntitiesTab({ caseId: cid, sho, canVerify }: {
       caseTimeline(cid).catch(() => ({ events: [] })),
     ])
       .then(([ents, rels, mgs, tl]) => {
-        const rows = ((ents as { results?: unknown }).results ?? ents) as unknown as EntityRow[];
+        const rows = (ents.results ?? []) as unknown as EntityRow[];
         setEntities(rows);
-        setRawRels(rels.map((r) => ({ id: r.id, src: Number(r.src), dst: Number(r.dst) })));
+        setRawRels(rels.results.map((r) => ({ id: r.id, src: Number(r.src), dst: Number(r.dst) })));
         const byId = new Map(rows.map((e) => [Number(e.id), e]));
         setRelations(
-          rels.map((r) => {
+          rels.results.map((r) => {
             const sid = Number(r.src);
             const did = Number(r.dst);
             const other = byId.get(did) ?? byId.get(sid);
@@ -72,7 +72,10 @@ export function EntitiesTab({ caseId: cid, sho, canVerify }: {
               edge: r.edge_type,
               confidence: r.confidence,
               snippet: r.snippet,
-            } as RelCardData & { srcId: number; dstId: number };
+              status: (r as { status?: string }).status ?? "",
+              srcLabel: r.src_value,
+              dstLabel: r.dst_value,
+            } as RelCardData & { srcId: number; dstId: number; status: string; srcLabel: string; dstLabel: string };
           })
         );
         setMerges(mgs);
@@ -136,6 +139,20 @@ export function EntitiesTab({ caseId: cid, sho, canVerify }: {
     }
   }
 
+  async function decideR(id: number, ok: boolean) {
+    try {
+      await decideRelation(id, ok ? "confirm" : "reject");
+      toast({ kind: "ok", title: ok ? "Link confirmed" : "Link rejected" });
+      refresh();
+    } catch (err) {
+      toast({ kind: "warn", title: "Link decision failed", body: err instanceof Error ? err.message : undefined });
+    }
+  }
+
+  const pendingRels = relations.filter(
+    (r) => ((r as RelCardData & { status?: string }).status ?? "").toLowerCase() === "pending"
+  );
+
   return (
     <div className="space-y-[18px]">
       {canVerify && !sho ? (
@@ -182,7 +199,7 @@ export function EntitiesTab({ caseId: cid, sho, canVerify }: {
                 },
                 { key: "type", head: "Type", render: (e) => <span className="font-mono text-[11.5px]">{e.node_type}</span> },
                 { key: "conn", head: "Connections", numeric: true, render: (e) => <span>{degree.get(Number(e.id)) ?? 0}</span> },
-                { key: "cases", head: "Cases", numeric: true, render: () => <span>1</span> },
+                { key: "mentions", head: "Mentions", numeric: true, render: (e) => <span>{e.mention_count ?? 0}</span> },
                 {
                   key: "conf",
                   head: "Confidence",
@@ -248,6 +265,41 @@ export function EntitiesTab({ caseId: cid, sho, canVerify }: {
         )}
         {!sho && merges.length > 0 && (
           <p className="mt-2 font-mono text-[10.5px] text-fg-4">Approving merges needs the SHO role.</p>
+        )}
+      </Panel>
+
+      <Panel title={`Link review${pendingRels.length ? ` · ${pendingRels.length}` : ""}`}>
+        {pendingRels.length === 0 ? (
+          <p className="text-[12.5px] text-fg-3">No pending links — extracted relationships appear here for confirm or reject.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {pendingRels.map((r) => {
+              const x = r as RelCardData & { srcLabel?: string; dstLabel?: string };
+              return (
+                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-[10px]">
+                  <span className="min-w-0 text-[12.5px] text-fg-2">
+                    <b className="font-medium text-fg">{x.srcLabel ?? r.other}</b>
+                    <span className="mx-1 font-mono text-[11px] text-fg-4">—[{r.edge}]→</span>
+                    <b className="font-medium text-fg">{x.dstLabel ?? ""}</b>{" "}
+                    <span className="font-mono text-[11px] text-fg-4">{Math.round(r.confidence * 100)}%</span>
+                    {r.snippet && <span className="mt-[2px] block truncate text-[11.5px] text-fg-3">{r.snippet}</span>}
+                  </span>
+                  {canVerify && !sho ? (
+                    <span className="flex gap-2">
+                      <Button variant="success" small onClick={() => decideR(Number(r.id), true)}>
+                        Confirm
+                      </Button>
+                      <Button variant="danger" small onClick={() => decideR(Number(r.id), false)}>
+                        Reject
+                      </Button>
+                    </span>
+                  ) : (
+                    <Tag tone="muted">pending</Tag>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </Panel>
     </div>

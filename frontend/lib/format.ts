@@ -47,21 +47,6 @@ export function caseId(id: number | string): string {
   return `C-${id}`;
 }
 
-/** Indian 10-digit phone prettifier; passes anything else through. */
-export function phone(p: string): string {
-  const d = p.replace(/\D/g, "");
-  const m = d.match(/^(?:91)?(\d{5})(\d{5})$/);
-  return m ? `${m[1]} ${m[2]}` : p;
-}
-
-/** INR-aware compact currency: 1250000 -> "₹12.5L". */
-export function inr(n: number): string {
-  if (n >= 1e7) return `₹${(n / 1e7).toFixed(1)}Cr`;
-  if (n >= 1e5) return `₹${(n / 1e5).toFixed(1)}L`;
-  if (n >= 1e3) return `₹${(n / 1e3).toFixed(1)}K`;
-  return `₹${n}`;
-}
-
 export function fmtBytes(n?: number | null): string {
   if (n === undefined || n === null) return "—";
   if (n < 1024) return `${n} B`;
@@ -77,12 +62,6 @@ export function initials(name?: string | null): string {
   const parts = clean.split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-/** "pending_review" -> "Pending review". */
-export function humanize(s?: string | null): string {
-  if (!s) return "—";
-  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** "HH:MM" session clock for the sidebar footer. */

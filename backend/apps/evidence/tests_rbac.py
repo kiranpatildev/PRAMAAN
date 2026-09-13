@@ -42,7 +42,7 @@ class HandsOnWorkTests(TestCase):
 
     def test_sho_cannot_verify(self):
         c = self._client(self.sho)
-        r = c.post(f"/api/entities/review/entities/{self.a.id}/", {"decision": "confirm"})
+        r = c.post(f"/api/cases/{self.case.id}/entities/{self.a.id}/confirm/")
         self.assertEqual(r.status_code, 403)
         r = c.post(f"/api/entities/review/relations/{self.rel.id}/", {"decision": "confirm"})
         self.assertEqual(r.status_code, 403)
@@ -56,5 +56,5 @@ class HandsOnWorkTests(TestCase):
             f = SimpleUploadedFile("x.txt", b"hello 9876543210", content_type="text/plain")
             r = c.post(f"/api/cases/{self.case.id}/evidence/", {"file": f}, format="multipart")
         self.assertEqual(r.status_code, 201)
-        r = c.post(f"/api/entities/review/entities/{self.a.id}/", {"decision": "confirm"})
+        r = c.post(f"/api/cases/{self.case.id}/entities/{self.a.id}/confirm/")
         self.assertEqual(r.status_code, 200)

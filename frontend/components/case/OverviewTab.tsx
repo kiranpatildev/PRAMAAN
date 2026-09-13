@@ -38,17 +38,16 @@ export function OverviewTab({ caseId: cid, kase, onManageTeam }: {
 
   useEffect(() => {
     Promise.all([
-      reviewEntities(cid, "pending", 1).then((d) => d),
+      reviewEntities(cid, "pending", 1),
       listEvidence(cid),
       reviewRelations(cid, "", 500),
       caseTimeline(cid).catch(() => ({ events: [] })),
     ])
       .then(([pend, ev, rels, tl]) => {
-        const list = (pend as { results?: unknown[] }).results ?? (pend as unknown[]);
-        setPending(Array.isArray(list) ? list.length : 0);
+        setPending(pend.count ?? pend.results.length);
         setVerified(ev.filter((e) => e.ocr_status === "done").length);
-        setRelTotal(rels.length);
-        setRelTypes(new Set(rels.map((r) => r.edge_type)).size);
+        setRelTotal(rels.count ?? rels.results.length);
+        setRelTypes(new Set(rels.results.map((r) => r.edge_type)).size);
         setEvents(((tl.events ?? []) as TimelineEvent[]).slice(0, 5));
       })
       .catch(() => {})

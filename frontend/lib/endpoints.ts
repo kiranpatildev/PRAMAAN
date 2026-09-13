@@ -22,12 +22,6 @@ function unwrap<T>(d: { results?: T } | T): T {
 
 /* ---------------- auth ---------------- */
 
-export function loginUser(username: string, password: string, expected_role?: string, use2fa?: boolean, otp?: string) {
-  void use2fa;
-  void otp;
-  return import("./api").then(({ api }) => api.login(username, password, expected_role));
-}
-
 export function getMe(): Promise<User> {
   return apiFetch(`${API_BASE}/auth/me/`).then(handle);
 }
@@ -135,12 +129,16 @@ export function reprocessEvidence(caseId: string | number, id: number) {
 
 /* ---------------- review (entities / relations / merges) ---------------- */
 
-export function reviewEntities(caseId: string | number, status = "pending", limit = 500) {
-  return apiFetch(`${API_BASE}/entities/review/entities/${qs({ case_id: caseId, status, limit })}`).then(handle).then((d) => unwrap<Record<string, unknown>[]>(d));
+export async function reviewEntities(caseId: string | number, status = "pending", limit = 500): Promise<Paginated<Record<string, unknown>>> {
+  const d = await apiFetch(`${API_BASE}/entities/review/entities/${qs({ case_id: caseId, status, limit })}`).then(handle);
+  if (Array.isArray(d)) return { count: d.length, results: d };
+  return { count: d.count ?? (d.results ?? []).length, results: d.results ?? [] };
 }
 
-export function reviewRelations(caseId: string | number, status = "pending", limit = 500): Promise<ReviewRelation[]> {
-  return apiFetch(`${API_BASE}/entities/review/relations/${qs({ case_id: caseId, status, limit })}`).then(handle).then((d) => unwrap<ReviewRelation[]>(d));
+export async function reviewRelations(caseId: string | number, status = "pending", limit = 500): Promise<Paginated<ReviewRelation>> {
+  const d = await apiFetch(`${API_BASE}/entities/review/relations/${qs({ case_id: caseId, status, limit })}`).then(handle);
+  if (Array.isArray(d)) return { count: d.length, results: d };
+  return { count: d.count ?? (d.results ?? []).length, results: d.results ?? [] };
 }
 
 export function reviewMerges(caseId: string | number, status = "pending", limit = 200): Promise<MergeSuggestion[]> {
@@ -156,13 +154,6 @@ export interface ReviewQueue {
 /** Cross-case pending queue, scoped server-side to visible cases. */
 export function reviewQueue(status = "pending", limit = 50): Promise<ReviewQueue> {
   return apiFetch(`${API_BASE}/entities/review/queue/${qs({ status, limit })}`).then(handle);
-}
-
-export function decideEntity(id: number, decision: "confirm" | "reject") {
-  return apiFetch(`${API_BASE}/entities/review/entities/${id}/`, {
-    method: "POST",
-    body: JSON.stringify({ decision }),
-  }).then(handle);
 }
 
 export function decideRelation(id: number, decision: "confirm" | "reject") {
@@ -212,22 +203,88 @@ export function caseTimeline(id: string | number) {
 
 /* ---------------- snapshots ---------------- */
 
-export function listSnapshots(caseId: string | number) {
-  return apiFetch(`${API_BASE}/cases/${caseId}/graph/snapshots/`).then(handle).then(unwrap<unknown[]>);
+export interface SnapshotSummary {
+  id: number;
+  label: string;
+  node_count: number;
+  edge_count: number;
+  created_at: string;
+  created_by?: string;
+}
+
+export async function listSnapshots(caseId: string | number): Promise<SnapshotSummary[]> {
+  const d = await apiFetch(`${API_BASE}/cases/${caseId}/graph/snapshots/`).then(handle);
+  return unwrap<SnapshotSummary[]>(d);
+}
+
+export function createSnapshot(caseId: string | number, label: string) {
+  return apiFetch(`${API_BASE}/cases/${caseId}/graph/snapshots/`, {
+    method: "POST",
+    body: JSON.stringify({ label }),
+  }).then(handle);
+}
+
+export function snapshotDiff(caseId: string | number, a: number, b: number) {
+  return apiFetch(`${API_BASE}/cases/${caseId}/graph/snapshots/diff/${qs({ a, b })}`).then(handle);
+}
+
+export function deleteSnapshot(caseId: string | number, id: number): Promise<void> {
+  return apiFetch(`${API_BASE}/cases/${caseId}/graph/snapshots/${id}/`, { method: "DELETE" }).then(() => undefined);
 }
 
 export function analyticsOverview(caseId: string | number) {
   return apiFetch(`${API_BASE}/analytics/case/${caseId}/overview/`).then(handle);
 }
 
+export interface RiskScore {
+  key: string;
+  label: string;
+  type: string;
+  score: number;
+  level: string;
+  factors: { name: string; value: number; weight: number; contribution: number; reason: string }[];
+}
+
+export function analyticsRisk(caseId: string | number): Promise<{
+  case_id: number; report_id: number; weights_version: string;
+  weights: Record<string, number>; scores: RiskScore[];
+}> {
+  return apiFetch(`${API_BASE}/analytics/case/${caseId}/risk/`).then(handle);
+}
+
+export interface Anomaly {
+  kind: string;
+  severity: string;
+  confidence?: number;
+  nodes?: { key: string; label: string }[];
+  explanation: string;
+  evidence?: Record<string, unknown>;
+}
+
+export function caseAnomalies(caseId: string | number): Promise<{ case_id: number; anomalies: Anomaly[] }> {
+  return apiFetch(`${API_BASE}/analytics/case/${caseId}/anomalies/`).then(handle);
+}
+
+export function districts(): Promise<{ districts: string[] }> {
+  return apiFetch(`${API_BASE}/analytics/districts/`).then(handle);
+}
+
+export interface DistrictOverview {
+  district: string;
+  cases: { total: number; by_status: Record<string, number>; by_risk: Record<string, number> };
+  workload: { username: string; role: string; active_cases: number; pending_reviews: number }[];
+  growth: { week: string; evidence_added: number }[];
+  cross_case_top: { node_type: string; normalized: string; cases: number }[];
+}
+
+export function districtOverview(district: string): Promise<DistrictOverview> {
+  return apiFetch(`${API_BASE}/analytics/district/${qs({ district })}`).then(handle);
+}
+
 /* ---------------- analytics / cross-case / geo ---------------- */
 
 export function crossCase(caseId?: string | number) {
   return apiFetch(`${API_BASE}/analytics/cross-case/${caseId ? qs({ case_id: caseId }) : ""}`).then(handle);
-}
-
-export function geoPoints(caseId: string | number) {
-  return apiFetch(`${API_BASE}/cases/${caseId}/geo/`).then(handle);
 }
 
 /* ---------------- assistant ---------------- */
@@ -278,7 +335,55 @@ export async function notifications(unread = false): Promise<unknown[]> {
   return unwrap<unknown[]>(d);
 }
 
+export interface AlertRule {
+  id: number;
+  kind: string;
+  case: number | null;
+  case_fir?: string | null;
+  min_severity: string;
+  min_confidence: number;
+  enabled: boolean;
+}
+
+export async function alertRules(): Promise<AlertRule[]> {
+  const d = await apiFetch(`${API_BASE}/alerts/rules/`).then(handle);
+  return unwrap<AlertRule[]>(d);
+}
+
+export function createAlertRule(data: { kind: string; case?: number | null; min_severity?: string; min_confidence?: number }): Promise<AlertRule> {
+  return apiFetch(`${API_BASE}/alerts/rules/`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  }).then(handle);
+}
+
+export function patchAlertRule(id: number, data: Partial<{ kind: string; min_severity: string; min_confidence: number; enabled: boolean }>): Promise<AlertRule> {
+  return apiFetch(`${API_BASE}/alerts/rules/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  }).then(handle);
+}
+
+export function deleteAlertRule(id: number): Promise<void> {
+  return apiFetch(`${API_BASE}/alerts/rules/${id}/`, { method: "DELETE" }).then(() => undefined);
+}
+
 /* ---------------- reports ---------------- */
+
+export interface ReportRow {
+  id: number;
+  case: number;
+  kind: string;
+  sha256: string;
+  size_bytes: number;
+  created_by?: string;
+  created_at: string;
+}
+
+export async function listReports(caseId: string | number): Promise<ReportRow[]> {
+  const d = await apiFetch(`${API_BASE}/reports/${qs({ case_id: caseId })}`).then(handle);
+  return unwrap<ReportRow[]>(d);
+}
 
 export function generatePackage(caseId: string | number) {
   return apiFetch(`${API_BASE}/reports/case-package/`, {

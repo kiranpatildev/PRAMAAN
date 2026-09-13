@@ -73,3 +73,20 @@ def hotspots(points: list[dict], cell: float = 0.5) -> list[dict]:
             out.append({"lat": lat, "lng": lng, "count": len(members),
                         "members": [m["label"] for m in members]})
     return sorted(out, key=lambda h: -h["count"])
+
+
+def attach_gazetteer(entity) -> bool:
+    """Auto-pin known places at extraction; returns True when attached.
+
+    Lives here (not in a view module) so the extraction pipeline and the
+    backfill command use it without importing HTTP code. The geo HTTP
+    endpoints were cut (no map UI); auto-pinning stays as pipeline behavior.
+    """
+    if entity.node_type != "Location" or entity.latitude is not None:
+        return False
+    hit = geocode(entity.normalized)
+    if hit is None:
+        return False
+    entity.latitude, entity.longitude, entity.geo_source = hit[0], hit[1], hit[2]
+    entity.save(update_fields=["latitude", "longitude", "geo_source", "updated_at"])
+    return True

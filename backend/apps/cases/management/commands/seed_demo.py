@@ -139,7 +139,7 @@ class Command(BaseCommand):
         user.role = role
         user.is_staff = is_staff
         user.is_superuser = is_superuser
-        user.totp_secret = ""  # demo logins stay 2FA-free; enable it in-app to try 2FA
+        user.totp_secret = ""  # 2FA dormant: demo logins stay 2FA-free (no enrollment UI)
         user.totp_enabled = False
         user.save()
         return user

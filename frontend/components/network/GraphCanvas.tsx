@@ -66,7 +66,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
   selectedId: string | null;
   highlightIds?: string[];
   onSelect: (id: string | null) => void;
-}>(function GraphCanvas({ nodes, edges, clusters, selectedId, highlightIds = [], onSelect }, ref) {
+  onZoom?: (scale: number) => void;
+}>(function GraphCanvas({ nodes, edges, clusters, selectedId, highlightIds = [], onSelect, onZoom }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const state = useRef({
     sim: [] as SimNode[],
@@ -80,11 +81,13 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
     highlight: [] as string[],
     isolated: null as string | null,
     onSelect: (_id: string | null) => {},
+    onZoom: null as ((scale: number) => void) | null,
     dirty: true,
   });
   state.current.selectedId = selectedId;
   state.current.highlight = highlightIds;
   state.current.onSelect = onSelect;
+  state.current.onZoom = onZoom ?? null;
 
   // Selection/highlight changes repaint even when physics has cooled.
   useEffect(() => {
@@ -126,6 +129,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
       st.ox = cv.clientWidth / 2 - n.x * st.scale;
       st.oy = cv.clientHeight / 2 - n.y * st.scale;
       st.dirty = true;
+      st.onZoom?.(st.scale);
     },
     reset() {
       const st = state.current;
@@ -145,6 +149,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
       st.oy = cy - ((cy - st.oy) / st.scale) * s;
       st.scale = s;
       st.dirty = true;
+      st.onZoom?.(st.scale);
     },
     zoomOut() {
       const st = state.current;
@@ -157,6 +162,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
       st.oy = cy - ((cy - st.oy) / st.scale) * s;
       st.scale = s;
       st.dirty = true;
+      st.onZoom?.(st.scale);
     },
     fit() {
       const st = state.current;
@@ -180,6 +186,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
       st.ox = W / 2 - ((x0 + x1) / 2) * s;
       st.oy = H / 2 - ((y0 + y1) / 2) * s;
       st.dirty = true;
+      st.onZoom?.(st.scale);
     },
     isolate(id: string | null) {
       const st = state.current;
@@ -524,6 +531,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
       st2.oy = sy - ((sy - st2.oy) / st2.scale) * s;
       st2.scale = s;
       st2.dirty = true;
+      st2.onZoom?.(st2.scale);
     };
 
     cv.addEventListener("mousedown", onDown);

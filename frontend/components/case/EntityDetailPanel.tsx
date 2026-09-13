@@ -54,7 +54,9 @@ function RelCard({ rel, onSelect }: { rel: RelCardData; onSelect?: (id: number |
       <EntityChip type={rel.otherType} size={22} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12.5px] text-fg-2">{rel.edge.toLowerCase()}</span>
-        <span className="block font-mono text-[10.5px] text-fg-4">1 occurrence</span>
+        <span className="block truncate font-mono text-[10.5px] text-fg-4">
+          {rel.snippet ? rel.snippet.slice(0, 90) : "—"}
+        </span>
       </span>
       <span className="rounded-[3px] border border-line-2 px-[5px] py-px font-mono text-[10px] text-fg-3">
         {Math.round(rel.confidence * 100)}%
@@ -111,7 +113,7 @@ export function EntityDetailPanel({ entity, relations, events, evidenceNote, can
         {[
           ["Entity type", ENTITY_META_LABEL(entity.node_type)],
           ["Identifier", `#${entity.id}`],
-          ["Case associations", entity.case_fir ? `1 · ${entity.case_fir}` : "1"],
+          ["Case", entity.case_fir ?? (entity.case_id != null ? `#${entity.case_id}` : "—")],
           ["Connected entities", String(degree)],
         ].map(([k, v]) => (
           <div key={k}>

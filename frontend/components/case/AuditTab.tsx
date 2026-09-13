@@ -8,35 +8,27 @@ import { Avatar } from "../ui/Avatar";
 import { Empty } from "../ui/Empty";
 import { Notice } from "../ui/Notice";
 import { Button } from "../ui/Button";
-import { auditLog } from "@/lib/endpoints";
+import { caseActivity } from "@/lib/endpoints";
 import { auditDate } from "@/lib/format";
-import type { AuditEntry } from "@/lib/types";
 
-function actionOf(a: AuditEntry): string {
-  return a.action ?? a.kind ?? "update";
-}
-
-function whoOf(a: AuditEntry): string {
-  return a.actor ?? a.who ?? "?";
-}
-
-function atOf(a: AuditEntry): string {
-  return a.at ?? a.ts ?? a.timestamp ?? "";
+interface ActivityRow {
+  ts: string;
+  kind: string;
+  actor: string;
+  text: string;
 }
 
 export function AuditTab({ caseId: cid }: { caseId: string | number }) {
-  const [rows, setRows] = useState<AuditEntry[]>([]);
+  const [rows, setRows] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const refresh = () => {
     setLoading(true);
     setError("");
-    auditLog()
+    caseActivity(cid)
       .then((d) => {
-        // Backend scopes investigators to their own actions already.
-        const re = new RegExp(`\\/cases\\/${cid}([\\/\\?]|$)`);
-        setRows((d.results ?? []).filter((a) => re.test(a.object_type ?? a.target_type ?? "")));
+        setRows(((d as { activity?: ActivityRow[] }).activity ?? []) as ActivityRow[]);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Audit log failed to load"))
       .finally(() => setLoading(false));
@@ -61,13 +53,15 @@ export function AuditTab({ caseId: cid }: { caseId: string | number }) {
       ) : (
         <ul className="divide-y divide-line">
           {rows.map((a, i) => (
-            <li key={a.id ?? i} className="grid grid-cols-[180px_1fr_auto] items-center gap-3 px-[14px] py-[10px] max-[700px]:grid-cols-[1fr_auto]">
+            <li key={i} className="grid grid-cols-[180px_1fr_auto] items-center gap-3 px-[14px] py-[10px] max-[700px]:grid-cols-[1fr_auto]">
               <span className="flex min-w-0 items-center gap-2">
-                <Avatar name={whoOf(a)} />
-                <span className="truncate text-[12.5px] text-fg-2">{whoOf(a)}</span>
+                <Avatar name={a.actor ?? "?"} />
+                <span className="truncate text-[12.5px] text-fg-2">{a.actor ?? "?"}</span>
               </span>
-              <span className="truncate font-mono text-[11.5px] text-fg-3">{actionOf(a)}</span>
-              <span className="font-mono text-[10.5px] text-fg-4">{auditDate(atOf(a))}</span>
+              <span className="truncate font-mono text-[11.5px] text-fg-3">
+                {a.kind ? `${a.kind} — ` : ""}{a.text ?? ""}
+              </span>
+              <span className="font-mono text-[10.5px] text-fg-4">{a.ts ? auditDate(a.ts) : ""}</span>
             </li>
           ))}
         </ul>

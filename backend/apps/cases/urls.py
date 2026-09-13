@@ -3,7 +3,6 @@ from rest_framework.routers import DefaultRouter
 
 from apps.evidence.views import EvidenceViewSet
 from apps.graph_api.views import GraphViewSet
-from apps.graph_api.views_geo import entity_locate, geo_movements, geo_nearby, geo_points
 from apps.graph_api.views_review import case_entity_confirm, case_entity_reject
 from apps.graph_api.views_snapshots import snapshot_detail, snapshot_diff, snapshot_list_create
 
@@ -47,9 +46,6 @@ urlpatterns = [
     path("<int:case_pk>/graph/snapshots/diff/", snapshot_diff, name="case-snapshots-diff"),
     path("<int:case_pk>/graph/snapshots/<int:pk>/", snapshot_detail, name="case-snapshot-detail"),
     path("<int:case_pk>/timeline/", graph_timeline, name="case-timeline"),
-    path("<int:case_pk>/geo/", geo_points, name="case-geo"),
-    path("<int:case_pk>/geo/movements/", geo_movements, name="case-geo-movements"),
-    path("<int:case_pk>/geo/nearby/", geo_nearby, name="case-geo-nearby"),
     path("<int:case_pk>/tasks/", task_list_create, name="case-tasks"),
     path("<int:case_pk>/tasks/<int:pk>/", task_detail, name="case-task-detail"),
     path("<int:case_pk>/comments/", comment_list_create, name="case-comments"),

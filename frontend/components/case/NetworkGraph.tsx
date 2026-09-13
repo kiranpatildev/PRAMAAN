@@ -23,8 +23,7 @@ export function NetworkGraph({ canvasRef, nodes, edges, clusters, selectedId, hi
   const zoomBy = (f: number) => {
     if (f > 1) canvasRef.current?.zoomIn();
     else canvasRef.current?.zoomOut();
-    // Displayed % tracks the buttons; the canvas owns exact scale.
-    setZoom((z) => Math.max(30, Math.min(300, Math.round(z * f))));
+    // Zoom % is reported back by the canvas via onZoom (covers buttons, wheel, fit, focus).
   };
 
   return (
@@ -88,6 +87,7 @@ export function NetworkGraph({ canvasRef, nodes, edges, clusters, selectedId, hi
         selectedId={selectedId}
         highlightIds={highlightIds}
         onSelect={onSelect}
+        onZoom={(s) => setZoom(Math.round(s * 100))}
       />
 
       <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-between gap-3 border-t border-line bg-panel px-[14px] py-[9px]">

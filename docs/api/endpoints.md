@@ -67,7 +67,7 @@ sha256, storage_key, uploaded_by, classification,
 classification_confidence, ocr_status, ocr_pages, ocr_engine,
 processing_error, created_at, updated_at` (all but name/type/mime read-only).
 
-## Graph — `/api/cases/{id}/graph/…`, `/timeline/`, `/geo/…`
+## Graph — `/api/cases/{id}/graph/…`, `/timeline/`
 
 | Method + path | Auth | Notes |
 |---|---|---|
@@ -78,10 +78,10 @@ processing_error, created_at, updated_at` (all but name/type/mime read-only).
 | `GET/POST graph/snapshots/` | view / edit | POST needs `{label}` (+ optional filters) → 201 frozen `{nodes, edges}` + counts |
 | `GET graph/snapshots/diff/?a=&b=` | view | `{nodes:{added,removed}, edges:{added,removed}}` by stable id |
 | `GET/DELETE graph/snapshots/{sid}/` | view / edit | Detail includes `data`; delete → 204 |
-| `GET geo/` | view | `{points[] (located Locations + file), unlocated[], hotspots[]}` |
-| `GET geo/movements/?person=` | view | Dated PRESENT_AT trail, oldest first (nulls last); 400 without `person` |
-| `GET geo/nearby/?lat&lng&radius_km&date_from&date_to` | view | Haversine + window filter, sorted by distance |
 | workflow: `tasks/` GET/POST, `tasks/{id}/` PATCH/DELETE; `comments/` GET/POST, `comments/{id}/` DELETE; `links/` GET/POST, `links/{id}/` DELETE; `activity/` GET | view; writes need edit (assignees may move own task status; comment delete = author or SHO; link create needs target visible, rejects self/reverse-dup 409/400) | Task create validates assignee sees the case |
+
+> Geo HTTP endpoints (`geo/`, `geo/movements/`, `geo/nearby/`, `locate/`) were
+> removed — no map UI. Gazetteer auto-pinning at extraction stays.
 
 ## Entities & review — `/api/entities/…`
 
@@ -90,8 +90,6 @@ processing_error, created_at, updated_at` (all but name/type/mime read-only).
 | `GET ?q=&type=` | ✓ | Cross-case, visibility-scoped; empty q → `{results: []}` |
 | `GET /{id}/` | ✓ (scoped) | `{entity, evidence_trail[]}` (relations with snippets) |
 | `GET review/entities/?case_id&status=` | view | Pending queue (default filter in UI) |
-| `POST review/entities/{id}/ {decision: confirm\|reject}` | **investigator-only** | Flips status, re-queues build (broker failure swallowed) |
-| `PATCH review/entities/{id}/locate/ {latitude, longitude}` | edit | Location-only, range-checked → `geo_source: "manual"` (⚠️ no UI button) |
 | `GET review/relations/?case_id&status=` | view | With src/dst values + snippets |
 | `POST review/relations/{id}/` | **investigator-only** | Confirm at conf ≥0.60 emits CONNECTION alert (high if ≥0.80) |
 | `GET review/merges/?case_id&status=` | view | Score-ordered suggestions |
@@ -102,7 +100,6 @@ processing_error, created_at, updated_at` (all but name/type/mime read-only).
 `case/{id}/overview/` (top-15 players, bridges, communities, engine+notes) ·
 `case/{id}/risk/` (scores + factor breakdown, auto-saves `RiskReport`) ·
 `case/{id}/risk/history/` · `case/{id}/anomalies/` ·
-`case/{id}/compare/?from=&to=` (graph ≤A vs ≤B diff; 400 without both) ·
 `cross-case/` (≥2 mutually-visible cases) · `districts/` · `district/?district=`
 (requires the param; aggregates only).
 

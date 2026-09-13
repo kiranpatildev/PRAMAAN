@@ -153,8 +153,10 @@ def cross_case(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def district_list(request):
-    """Distinct districts for the dashboard selector."""
-    districts = (Case.objects.exclude(district="").values_list("district", flat=True)
+    """Distinct districts for the dashboard selector (scoped to visible cases)."""
+    ids = visible_case_ids(request.user)
+    base = Case.objects.all() if ids is None else Case.objects.filter(pk__in=ids)
+    districts = (base.exclude(district="").values_list("district", flat=True)
                  .distinct().order_by("district")[:100])
     return Response({"districts": list(districts)})
 
@@ -173,23 +175,27 @@ def district_overview(request):
     district = (request.query_params.get("district") or "").strip()
     if not district:
         return Response({"detail": "?district= required (see districts/)."}, status=400)
-    cases = Case.objects.filter(district=district)
+    ids = visible_case_ids(request.user)
+    base = Case.objects.all() if ids is None else Case.objects.filter(pk__in=ids)
+    cases = base.filter(district=district)
     by_status = {r["status"]: r["n"] for r in cases.values("status").annotate(n=Count("id"))}
     by_risk = {r["risk_level"]: r["n"] for r in cases.values("risk_level").annotate(n=Count("id"))}
+    ent_scope = {} if ids is None else {"case_id__in": ids}
     workload = []
     for u in User.objects.filter(role__in=("investigator", "sho")).order_by("username")[:50]:
         active = cases.filter(assignments__user=u).exclude(status__in=("closed", "archived")).count()
         owned = cases.filter(owner=u).exclude(status__in=("closed", "archived")).count()
         if active or owned:
             pending = ExtractedEntity.objects.filter(
-                case__district=district, case__assignments__user=u, status="pending").count()
+                case__district=district, case__assignments__user=u, status="pending",
+                **ent_scope).count()
             workload.append({"username": u.username, "role": u.role,
                              "active_cases": active + owned, "pending_reviews": pending})
     growth = [{"week": r["week"].isoformat(), "evidence_added": r["n"]}
-              for r in Evidence.objects.filter(case__district=district)
+              for r in Evidence.objects.filter(case__district=district, **ent_scope)
               .annotate(week=TruncWeek("created_at")).values("week").annotate(n=Count("id"))
               .order_by("week")[:26]]
-    cross = (ExtractedEntity.objects.filter(case__district=district).exclude(status="rejected")
+    cross = (ExtractedEntity.objects.filter(case__district=district, **ent_scope).exclude(status="rejected")
              .values("node_type", "normalized").annotate(cases=Count("case", distinct=True))
              .filter(cases__gte=2).order_by("-cases")[:10])
     return Response({
@@ -202,33 +208,4 @@ def district_overview(request):
     })
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def case_compare(request, case_id):
-    """Date-based 'what changed': graph ≤from vs graph ≤to (valid_from)."""
-    case, err = _case_or_403(request, case_id)
-    if err:
-        return err
-    date_from = request.query_params.get("from")
-    date_to = request.query_params.get("to")
-    if not date_from or not date_to:
-        return Response({"detail": "?from=YYYY-MM-DD&to=YYYY-MM-DD required."}, status=400)
-    try:
-        svc = GraphService()
-        a = svc.get_case_graph(case.id, limit=5000, date_to=date_from)
-        b = svc.get_case_graph(case.id, limit=5000, date_to=date_to)
-    except GraphUnavailable as exc:
-        return Response({"detail": str(exc)[:200]}, status=503)
-    except ValueError as exc:
-        return Response({"detail": str(exc)[:200]}, status=400)
-    an, bn = {n["id"]: n for n in a["nodes"]}, {n["id"]: n for n in b["nodes"]}
-    ae, be = {e["id"]: e for e in a["edges"]}, {e["id"]: e for e in b["edges"]}
-    return Response({
-        "case_id": case.id,
-        "a": {"label": f"≤ {date_from}", "node_count": len(an), "edge_count": len(ae)},
-        "b": {"label": f"≤ {date_to}", "node_count": len(bn), "edge_count": len(be)},
-        "nodes": {"added": [bn[k] for k in bn.keys() - an.keys()],
-                  "removed": [an[k] for k in an.keys() - bn.keys()]},
-        "edges": {"added": [be[k] for k in be.keys() - ae.keys()],
-                  "removed": [ae[k] for k in ae.keys() - be.keys()]},
-    })
+

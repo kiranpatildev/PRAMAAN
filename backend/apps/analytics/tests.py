@@ -225,13 +225,4 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(c.get(f"/api/analytics/case/{self.case.id}/overview/").status_code, 403)
         self.assertEqual(c.get(f"/api/analytics/case/{self.case.id}/risk/").status_code, 403)
 
-    def test_compare_endpoint(self):
-        c = self._client(self.inv)
-        ga = {"nodes": [{"id": "k1", "label": "A"}], "edges": []}
-        gb = {"nodes": [{"id": "k1", "label": "A"}, {"id": "k2", "label": "B"}], "edges": []}
-        with mock.patch("apps.analytics.views.GraphService") as GS:
-            GS.return_value.get_case_graph.side_effect = [ga, gb]
-            r = c.get(f"/api/analytics/case/{self.case.id}/compare/?from=2026-03-12&to=2026-03-15")
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual([n["id"] for n in r.data["nodes"]["added"]], ["k2"])
-        self.assertEqual(c.get(f"/api/analytics/case/{self.case.id}/compare/").status_code, 400)
+

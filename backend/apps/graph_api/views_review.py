@@ -69,18 +69,6 @@ def review_entities(request):
     return _page(qs, request, ExtractedEntitySerializer)
 
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def review_entity_decide(request, pk):
-    ent = get_object_or_404(ExtractedEntity, pk=pk)
-    if not user_can_contribute_case(request.user, ent.case):
-        return Response({"detail": "Only investigators assigned to this case can verify entities."}, status=403)
-    decision = (request.data.get("decision") or request.query_params.get("decision") or "").lower()
-    if decision not in ("confirm", "reject"):
-        return Response({"detail": "decision must be confirm|reject"}, status=400)
-    return _decide_entity(ent, decision)
-
-
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def review_relations(request):

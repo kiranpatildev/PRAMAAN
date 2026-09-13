@@ -14,6 +14,8 @@ import { TimelineTab } from "@/components/case/TimelineTab";
 import { CrossCaseTab } from "@/components/case/CrossCaseTab";
 import { NotesTasksTab } from "@/components/case/NotesTasksTab";
 import { AuditTab } from "@/components/case/AuditTab";
+import { ReportsTab } from "@/components/case/ReportsTab";
+import { AnalyticsTab } from "@/components/case/AnalyticsTab";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -160,8 +162,10 @@ export default function CaseWorkspacePage({ params }: { params: { id: string } }
     { id: "network", label: "Network" },
     { id: "timeline", label: "Timeline", count: timelineCount },
     { id: "cross", label: "Cross-Case Links" },
+    { id: "analytics", label: "Analytics" },
     { id: "notes", label: "Notes & Tasks" },
     { id: "audit", label: "Audit Log" },
+    { id: "reports", label: "Reports" },
   ];
 
   return (
@@ -202,7 +206,7 @@ export default function CaseWorkspacePage({ params }: { params: { id: string } }
         {tab === "team" && sho && <TeamTab caseId={kase.id} assigned={assigned} onChanged={refresh} />}
         {tab === "evidence" && <EvidenceTab caseId={kase.id} sho={sho} canContribute={canContribute} />}
         {tab === "entities" && <EntitiesTab caseId={kase.id} sho={sho} canVerify={canContribute} />}
-        {tab === "network" && <NetworkTab caseId={kase.id} highlightLabels={highlightLabels} />}
+        {tab === "network" && <NetworkTab caseId={kase.id} highlightLabels={highlightLabels} canEdit={sho || canContribute} />}
         {tab === "timeline" && (
           <TimelineTab
             caseId={kase.id}
@@ -215,6 +219,8 @@ export default function CaseWorkspacePage({ params }: { params: { id: string } }
         {tab === "cross" && <CrossCaseTab caseId={kase.id} />}
         {tab === "notes" && <NotesTasksTab caseId={kase.id} sho={sho} />}
         {tab === "audit" && <AuditTab caseId={kase.id} />}
+        {tab === "analytics" && <AnalyticsTab caseId={kase.id} />}
+        {tab === "reports" && <ReportsTab caseId={kase.id} canExport={sho || canContribute} />}
       </div>
     </div>
   );

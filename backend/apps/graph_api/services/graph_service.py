@@ -223,15 +223,6 @@ class GraphService:
             driver.close()
         return {"case_id": case_id, "events": events}
 
-    def snapshot(self, case_id: int, label: str = "") -> dict:
-        return {"case_id": case_id, "label": label or utcnow_iso(), "saved": True}
-
-    def diff(self, case_id: int, from_ts: str = "", to_ts: str = "") -> dict:
-        return {"case_id": case_id, "from": from_ts, "to": to_ts, "added": [], "removed": []}
-
-    def what_if(self, case_id: int, remove_nodes: list | None = None) -> dict:
-        return {"case_id": case_id, "removed": remove_nodes or [], "impact": "not-computed (Phase 5)"}
-
     # -- writes (Phase 3: extraction pipeline calls these) ------------------
     def upsert_entity(self, case_id: int, node_type: str, props: dict) -> dict:
         assert node_type in NODE_TYPES, f"unknown node type {node_type}"

@@ -227,7 +227,7 @@ class ReviewApiTests(TestCase):
         self.assertEqual(lst.status_code, 200)
         self.assertEqual(len(lst.data["results"]), 2)
         with mock.patch("apps.graph_api.services.graph_service.GraphService") as GS:
-            ok = c.post(f"/api/entities/review/entities/{self.a.id}/", {"decision": "confirm"})
+            ok = c.post(f"/api/cases/{self.case.id}/entities/{self.a.id}/confirm/")
         self.assertEqual(ok.status_code, 200)
         self.assertEqual(ok.data["status"], "confirmed")
         GS.return_value.upsert_entity.assert_called()  # rebuild enqueued via eager celery

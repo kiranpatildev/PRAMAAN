@@ -126,7 +126,7 @@ def extract_entities(evidence_id: int) -> dict:
                 obj.save(update_fields=["mention_count", "confidence", "engine", "updated_at"])
             else:
                 try:
-                    from apps.graph_api.views_geo import attach_gazetteer  # Phase 7: auto-pin known places
+                    from apps.graph_api.services.geo import attach_gazetteer  # auto-pin known places
                     attach_gazetteer(obj)
                 except Exception:
                     pass

@@ -8,10 +8,23 @@ import { Tag } from "../ui/Tag";
 import { Empty } from "../ui/Empty";
 import { Notice } from "../ui/Notice";
 import { Button } from "../ui/Button";
-import { listEvidence, uploadEvidence } from "@/lib/endpoints";
-import { fmtBytes, longDate } from "@/lib/format";
+import { Modal } from "../ui/Modal";
+import {
+  listEvidence, uploadEvidence, deleteEvidence, evidenceCustody,
+  evidenceDownload, reprocessEvidence,
+} from "@/lib/endpoints";
+import { auditDate, fmtBytes, longDate } from "@/lib/format";
 import { useToast } from "../ui/Toast";
 import type { Evidence } from "@/lib/types";
+
+interface CustodyEntry {
+  id?: number;
+  action: string;
+  actor?: string;
+  details?: Record<string, unknown>;
+  ip?: string;
+  timestamp: string;
+}
 
 const TYPE_META: Record<string, { icon: typeof FileText; color: string }> = {
   pdf: { icon: FileText, color: "#f87171" },
@@ -38,7 +51,11 @@ export function EvidenceTab({ caseId: cid, sho, canContribute }: {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
+  const [custodyFor, setCustodyFor] = useState<Evidence | null>(null);
+  const [custodyRows, setCustodyRows] = useState<CustodyEntry[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState<Evidence | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const canEdit = sho || canContribute;
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -58,6 +75,46 @@ export function EvidenceTab({ caseId: cid, sho, canContribute }: {
     }, 8000);
     return () => clearInterval(t);
   }, [refresh]);
+
+  async function openCustody(e: Evidence) {
+    setCustodyFor(e);
+    setCustodyRows([]);
+    try {
+      setCustodyRows(await evidenceCustody(cid, e.id));
+    } catch (err) {
+      toast({ kind: "warn", title: "Custody failed", body: err instanceof Error ? err.message : undefined });
+    }
+  }
+
+  async function download(e: Evidence) {
+    try {
+      const { url } = await evidenceDownload(cid, e.id);
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      toast({ kind: "warn", title: "Download failed", body: err instanceof Error ? err.message : undefined });
+    }
+  }
+
+  async function reprocess(e: Evidence) {
+    try {
+      await reprocessEvidence(cid, e.id);
+      toast({ kind: "ok", title: "Reprocess queued", body: e.file_name });
+      refresh();
+    } catch (err) {
+      toast({ kind: "warn", title: "Reprocess failed", body: err instanceof Error ? err.message : undefined });
+    }
+  }
+
+  async function remove(e: Evidence) {
+    try {
+      await deleteEvidence(cid, e.id);
+      toast({ kind: "ok", title: "Evidence deleted", body: e.file_name });
+      setConfirmDelete(null);
+      refresh();
+    } catch (err) {
+      toast({ kind: "warn", title: "Delete failed", body: err instanceof Error ? err.message : undefined });
+    }
+  }
 
   async function upload(files: FileList | File[]) {
     const list = Array.from(files);
@@ -168,6 +225,26 @@ export function EvidenceTab({ caseId: cid, sho, canContribute }: {
               },
             ]}
             rows={items}
+            actionFor={(e) => (
+              <span className="flex justify-end gap-[6px]">
+                <Button variant="ghost" small onClick={() => openCustody(e)}>
+                  Custody
+                </Button>
+                <Button variant="ghost" small onClick={() => download(e)}>
+                  Download
+                </Button>
+                {canEdit && (
+                  <>
+                    <Button variant="ghost" small onClick={() => reprocess(e)}>
+                      Reprocess
+                    </Button>
+                    <Button variant="danger" small onClick={() => setConfirmDelete(e)}>
+                      Delete
+                    </Button>
+                  </>
+                )}
+              </span>
+            )}
             empty={
               <div className="p-[14px]">
                 <Empty icon={FileText} title="No evidence yet" body="Upload the first file to start the pipeline." />
@@ -181,6 +258,45 @@ export function EvidenceTab({ caseId: cid, sho, canContribute }: {
           Refresh
         </Button>
       </div>
+
+      {custodyFor && (
+        <Modal title={`Chain of custody · ${custodyFor.file_name}`} onClose={() => setCustodyFor(null)}>
+          {custodyRows.length === 0 ? (
+            <p className="text-[12.5px] text-fg-3">Loading custody ledger…</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {custodyRows.map((c, i) => (
+                <li key={c.id ?? i} className="flex items-center justify-between gap-3 py-[9px]">
+                  <span>
+                    <b className="block text-[12.5px] font-medium text-fg">{c.action}</b>
+                    <span className="block font-mono text-[10.5px] text-fg-4">
+                      {c.actor ?? "system"}{c.ip ? ` · ${c.ip}` : ""}
+                    </span>
+                  </span>
+                  <span className="font-mono text-[10.5px] text-fg-4">{auditDate(c.timestamp)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Modal>
+      )}
+
+      {confirmDelete && (
+        <Modal title="Delete evidence" onClose={() => setConfirmDelete(null)}>
+          <p className="text-[12.5px] text-fg-2">
+            Delete <b className="text-fg">{confirmDelete.file_name}</b>? The custody ledger
+            survives; the file and its extracted rows do not. This cannot be undone.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setConfirmDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => remove(confirmDelete)}>
+              Delete
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
