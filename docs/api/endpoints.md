@@ -75,13 +75,20 @@ processing_error, created_at, updated_at` (all but name/type/mime read-only).
 | `GET graph/expand/?node=&depth=` | view | 1–3-degree neighborhood (clamped); 400 without `node`; 503 if Neo4j down |
 | `POST graph/build/` | edit | Queues `build_temporal_graph` → `{build: "queued"}`; 503 if broker down |
 | `GET timeline/` | view | Dated edges oldest-first |
+| `GET map/` | view | Map-tab data: `{suspects[] (Person via latest PRESENT_AT → located place), device_pings[] (located Locations from CDR evidence), towers[] (CDR tower-column mentions geocoded city-fallback, grouped per tower+date with counts), unlocated[], counts{}}`; rejected rows excluded; unlocatable towers skipped, never invented; outsiders 403 |
+| `GET map/movements/?entity_id=` | view | Dated trail for one Person, oldest first: `{entity_id, value, trail[] (place, lat/lng, date, confidence, file)}`; undated/unlocated/rejected excluded, one entry per (place, date); non-Person 400, missing id 400, wrong case 404 |
+| `GET map/nearby/?lat=&lng=&radius_km=&date_from=&date_to=` | view | Who was near a point in a window: haversine over `PRESENT_AT`, sorted by distance, capped at 100; undated passes any window, dated must fall inside; Person subjects only, rejected rows/entities excluded; missing coords 400 |
+| `GET analytics/districts/geo/` | view | District dashboard map data: per-district coords (gazetteer) + case/entity/evidence counts + `unlocated_districts` count; scoped by `visible_case_ids()`; unplaceable districts counted, never plotted |
+| `PATCH cases/{id}/entities/{eid}/locate/` | edit | Drag-a-pin correction: `{latitude, longitude}` → sets coords + `geo_source: "manual"`; Location-only, range-checked, case-bound (cross-case 404); validation reused from the cut `entity_locate` verbatim |
 | `GET/POST graph/snapshots/` | view / edit | POST needs `{label}` (+ optional filters) → 201 frozen `{nodes, edges}` + counts |
 | `GET graph/snapshots/diff/?a=&b=` | view | `{nodes:{added,removed}, edges:{added,removed}}` by stable id |
 | `GET/DELETE graph/snapshots/{sid}/` | view / edit | Detail includes `data`; delete → 204 |
 | workflow: `tasks/` GET/POST, `tasks/{id}/` PATCH/DELETE; `comments/` GET/POST, `comments/{id}/` DELETE; `links/` GET/POST, `links/{id}/` DELETE; `activity/` GET | view; writes need edit (assignees may move own task status; comment delete = author or SHO; link create needs target visible, rejects self/reverse-dup 409/400) | Task create validates assignee sees the case |
 
-> Geo HTTP endpoints (`geo/`, `geo/movements/`, `geo/nearby/`, `locate/`) were
-> removed — no map UI. Gazetteer auto-pinning at extraction stays.
+> Old geo HTTP endpoints (`geo/`, `geo/movements/`, `geo/nearby/`, `locate/`)
+> were removed in Part 1 (no map UI) and revived by the Map tab as scoped
+> `map/`, `map/movements/`, `map/nearby/` plus case-bound entity `locate/`.
+> Gazetteer auto-pinning at extraction stays.
 
 ## Entities & review — `/api/entities/…`
 
@@ -125,9 +132,13 @@ Realtime: `ws/alerts/?token=<access-JWT>` → `hello`, then
 
 ## Reports / audit
 
-- `GET /api/reports/` (scoped, `?case_id=`) · `POST /api/reports/case-package/
-  {case_id}` (edit) → 201 `{…, download_url (7-day presigned)}`; 500 build
-  failure, 503 store down · `GET /api/reports/{id}/download/` streams the PDF.
+- `GET /api/reports/` (scoped, `?case_id=`) · `POST /api/reports/case-package/`
+  (multipart, edit) → 201 `{…, download_url (7-day presigned)}`; accepts
+  `case_id` (required) + optional `exhibit` (PNG/JPEG ≤ 5 MB) +
+  `exhibit_label` (defaults to filename) — stored as evidence with
+  chain-of-custody and embedded as a §5 map exhibit in the PDF; 400 on
+  bad type/oversize, 500 build failure, 503 store down ·
+  `GET /api/reports/{id}/download/` streams the PDF.
 - `GET /api/audit/` (read-only): SHO sees all; investigators see only rows
   where they are the actor. Shape: `{actor, action, object_type
   (request path), object_id (always ""), before (always {}), after

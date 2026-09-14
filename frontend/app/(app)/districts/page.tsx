@@ -9,21 +9,29 @@ import { Table, TableSkeleton } from "@/components/ui/Table";
 import { Empty } from "@/components/ui/Empty";
 import { Notice } from "@/components/ui/Notice";
 import { Button } from "@/components/ui/Button";
-import { districts, districtOverview, type DistrictOverview } from "@/lib/endpoints";
+import { districts, districtsGeo, districtOverview, type DistrictGeo, type DistrictOverview } from "@/lib/endpoints";
+import { DistrictMap } from "@/components/district/DistrictMap";
 
 export default function DistrictsPage() {
   const [names, setNames] = useState<string[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [ov, setOv] = useState<DistrictOverview | null>(null);
+  const [geo, setGeo] = useState<DistrictGeo[]>([]);
+  const [unlocated, setUnlocated] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    districts()
-      .then((d) => {
+    Promise.all([
+      districts(),
+      districtsGeo().catch(() => ({ districts: [] as DistrictGeo[], unlocated_districts: 0 })),
+    ])
+      .then(([d, g]) => {
         setNames(d.districts ?? []);
         if ((d.districts ?? []).length > 0) setSel(d.districts[0]);
         else setLoading(false);
+        setGeo(g.districts ?? []);
+        setUnlocated(g.unlocated_districts ?? 0);
       })
       .catch((e) => {
         setError(e instanceof Error ? e.message : "Districts failed to load");
@@ -65,6 +73,14 @@ export default function DistrictsPage() {
         <Empty icon={MapPin} title="No districts" body="District aggregates appear once cases carry a district." />
       ) : (
         <>
+          <div className="mb-[18px]">
+            <DistrictMap districts={geo} selected={sel} onSelect={setSel} />
+            {unlocated > 0 && (
+              <p className="mt-2 font-mono text-[10.5px] text-fg-4">
+                {unlocated} district{unlocated === 1 ? "" : "s"} without map coordinates — listed below, not plotted.
+              </p>
+            )}
+          </div>
           <div className="mb-[14px] flex flex-wrap gap-[6px]">
             {names.map((n) => (
               <button

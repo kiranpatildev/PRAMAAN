@@ -201,6 +201,110 @@ export function caseTimeline(id: string | number) {
   return apiFetch(`${API_BASE}/cases/${id}/timeline/`).then(handle);
 }
 
+export interface MapSuspect {
+  entity_id: number;
+  key: string;
+  value: string;
+  confidence: number;
+  engine: string;
+  status: string;
+  lat: number;
+  lng: number;
+  place_id: number;
+  place: string;
+  place_source: string;
+  date: string | null;
+  evidence_id: number | null;
+  evidence_file: string;
+}
+
+export interface MapDevicePing {
+  entity_id: number;
+  key: string;
+  value: string;
+  confidence: number;
+  engine: string;
+  status: string;
+  lat: number;
+  lng: number;
+  geo_source: string;
+  evidence_id: number | null;
+  evidence_file: string;
+}
+
+export interface MapTower {
+  key: string;
+  tower: string;
+  lat: number;
+  lng: number;
+  source: string;
+  date: string | null;
+  count: number;
+  evidence_id: number | null;
+  evidence_file: string;
+}
+
+export interface MapPoints {
+  case_id: number;
+  suspects: MapSuspect[];
+  device_pings: MapDevicePing[];
+  towers: MapTower[];
+  unlocated: { entity_id: number; value: string; confidence: number }[];
+  counts: { suspects: number; device_pings: number; towers: number; unlocated: number };
+}
+
+export function mapPoints(caseId: string | number): Promise<MapPoints> {
+  return apiFetch(`${API_BASE}/cases/${caseId}/map/`).then(handle);
+}
+
+export interface TrailPoint {
+  place_id: number;
+  location: string;
+  lat: number;
+  lng: number;
+  date: string;
+  confidence: number;
+  evidence_file: string;
+}
+
+export function mapMovements(caseId: string | number, entityId: number): Promise<{
+  case_id: number; entity_id: number; value: string; trail: TrailPoint[];
+}> {
+  return apiFetch(`${API_BASE}/cases/${caseId}/map/movements/${qs({ entity_id: entityId })}`).then(handle);
+}
+
+export interface NearbyHit {
+  entity_id: number;
+  key: string;
+  person: string;
+  location: string;
+  lat: number;
+  lng: number;
+  dist_km: number;
+  date: string | null;
+  evidence_file: string;
+}
+
+export function locateEntity(caseId: string | number, eid: number, lat: number, lng: number): Promise<{
+  id: number; latitude: number; lng: number; geo_source: string;
+}> {
+  return apiFetch(`${API_BASE}/cases/${caseId}/entities/${eid}/locate/`, {
+    method: "PATCH",
+    body: JSON.stringify({ latitude: lat, longitude: lng }),
+  }).then(handle);
+}
+
+export function mapNearby(caseId: string | number, opts: {
+  lat: number; lng: number; radius_km?: number; date_from?: string; date_to?: string;
+}): Promise<{ case_id: number; lat: number; lng: number; radius_km: number; hits: NearbyHit[] }> {
+  return apiFetch(`${API_BASE}/cases/${caseId}/map/nearby/${qs({
+    lat: opts.lat, lng: opts.lng,
+    radius_km: opts.radius_km ?? 5,
+    date_from: opts.date_from || undefined,
+    date_to: opts.date_to || undefined,
+  })}`).then(handle);
+}
+
 /* ---------------- snapshots ---------------- */
 
 export interface SnapshotSummary {
@@ -267,6 +371,20 @@ export function caseAnomalies(caseId: string | number): Promise<{ case_id: numbe
 
 export function districts(): Promise<{ districts: string[] }> {
   return apiFetch(`${API_BASE}/analytics/districts/`).then(handle);
+}
+
+export interface DistrictGeo {
+  district: string;
+  lat: number;
+  lng: number;
+  source: string;
+  cases: number;
+  entities: number;
+  evidence: number;
+}
+
+export function districtsGeo(): Promise<{ districts: DistrictGeo[]; unlocated_districts: number }> {
+  return apiFetch(`${API_BASE}/analytics/districts/geo/`).then(handle);
 }
 
 export interface DistrictOverview {
@@ -399,10 +517,20 @@ export async function listReports(caseId: string | number): Promise<ReportRow[]>
   return unwrap<ReportRow[]>(d);
 }
 
-export function generatePackage(caseId: string | number) {
+export function generatePackage(caseId: string | number, exhibit?: { blob: Blob; label: string }) {
+  if (!exhibit) {
+    return apiFetch(`${API_BASE}/reports/case-package/`, {
+      method: "POST",
+      body: JSON.stringify({ case_id: caseId }),
+    }).then(handle);
+  }
+  const form = new FormData();
+  form.append("case_id", String(caseId));
+  form.append("exhibit_label", exhibit.label);
+  form.append("exhibit", exhibit.blob, "map-exhibit.png");
   return apiFetch(`${API_BASE}/reports/case-package/`, {
     method: "POST",
-    body: JSON.stringify({ case_id: caseId }),
+    body: form,
   }).then(handle);
 }
 

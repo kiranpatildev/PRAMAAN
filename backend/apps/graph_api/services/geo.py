@@ -40,8 +40,16 @@ GAZETTEER: dict[str, tuple[float, float]] = {
 
 def geocode(normalized: str) -> tuple[float, float, str] | None:
     """Return (lat, lng, source) or None. City-prefix matches (e.g. 'pune ...')
-    inherit the city with a weaker source tag."""
-    norm = (normalized or "").strip().lower()
+    inherit the city with a weaker source tag.
+
+    Separators are normalized first because real tower names are hyphenated
+    ("Pune-Kothrud", "Mumbai_Andheri"): without this, every hyphenated tower
+    misses. Additive only — previously matching inputs resolve identically.
+    """
+    import re
+
+    norm = re.sub(r"[-_]+", " ", (normalized or "").strip().lower())
+    norm = re.sub(r"\s+", " ", norm)
     if norm in GAZETTEER:
         lat, lng = GAZETTEER[norm]
         return lat, lng, "gazetteer"
@@ -49,6 +57,50 @@ def geocode(normalized: str) -> tuple[float, float, str] | None:
         if " " not in city and norm.startswith(city + " "):
             return lat, lng, "gazetteer-city"
     return None
+
+
+TOWER_COLUMNS = {"tower", "tower_id", "cell", "cell_id", "cell_tower", "site", "site_id"}
+DATE_COLUMNS = {"date", "call_date", "datetime", "timestamp", "day"}
+MAX_CDR_ROWS = 5000
+
+
+def parse_cdr_towers(ocr_text: str) -> list[dict]:
+    """Tower mentions from CDR tabular text -> [{tower, date|None}].
+
+    Header-driven (csv module): finds a tower-like column and an optional
+    date column, case-insensitively. Non-tabular text, missing tower column,
+    or unparseable dates yield [] — never raises, never guesses coordinates
+    (geocoding is the caller's explicit step).
+    """
+    import csv
+    import datetime as _dt
+    import io
+
+    rows: list[dict] = []
+    try:
+        reader = csv.DictReader(io.StringIO(ocr_text or ""))
+        fields = {(h or "").strip().lower(): h for h in (reader.fieldnames or [])}
+        tower_key = next((fields[h] for h in fields if h in TOWER_COLUMNS), None)
+        if tower_key is None:
+            return []
+        date_key = next((fields[h] for h in fields if h in DATE_COLUMNS), None)
+        for i, row in enumerate(reader):
+            if i >= MAX_CDR_ROWS:
+                break
+            tower = (row.get(tower_key) or "").strip()
+            if not tower:
+                continue
+            day = None
+            if date_key:
+                raw = (row.get(date_key) or "").strip()[:10]
+                try:
+                    day = _dt.date.fromisoformat(raw).isoformat()
+                except ValueError:
+                    day = None
+            rows.append({"tower": tower, "date": day})
+    except Exception:
+        return []
+    return rows
 
 
 def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:

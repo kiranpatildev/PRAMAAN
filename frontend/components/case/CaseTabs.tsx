@@ -1,7 +1,7 @@
 "use client";
 
 export type CaseTabId =
-  | "overview" | "team" | "evidence" | "entities" | "network"
+  | "overview" | "team" | "evidence" | "entities" | "network" | "map"
   | "timeline" | "cross" | "notes" | "audit" | "reports" | "analytics";
 
 export interface TabDef {

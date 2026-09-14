@@ -226,3 +226,56 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(c.get(f"/api/analytics/case/{self.case.id}/risk/").status_code, 403)
 
 
+class DistrictGeoTests(TestCase):
+    def setUp(self):
+        from apps.evidence.models import Evidence
+        self.sho = _mkuser("geo_sho", Role.SHO)
+        self.inv = _mkuser("geo_inv", Role.INVESTIGATOR)
+        self.out = _mkuser("geo_out", Role.INVESTIGATOR)
+        self.pune = Case.objects.create(fir_no="FIR-DG-1", title="pune", owner=self.sho,
+                                        district="Pune")
+        CaseAssignment.objects.create(case=self.pune, user=self.inv, permission="edit",
+                                      assigned_by=self.sho)
+        # Investigator-visible: 1 case, 1 entity, 1 evidence in Pune.
+        ExtractedEntity.objects.create(case=self.pune, node_type="Person",
+                                       value="Ravi", normalized="ravi", confidence=0.9)
+        blob = b"g"
+        Evidence.objects.create(
+            case=self.pune, file_name="g.txt", mime_type="text/plain", size_bytes=1,
+            sha256=Evidence.hash_bytes(blob), storage_key="k-dg", uploaded_by=self.inv,
+            ocr_status="done")
+        # Hidden from inv: Mumbai case + unplaceable district.
+        self.mumbai = Case.objects.create(fir_no="FIR-DG-2", title="mumbai", owner=self.sho,
+                                          district="Mumbai")
+        Case.objects.create(fir_no="FIR-DG-3", title="atlantis", owner=self.sho,
+                            district="Atlantis")
+
+    def _client(self, user):
+        c = APIClient()
+        r = c.post("/api/auth/login/", {"username": user.username, "password": "pw123456"})
+        self.assertEqual(r.status_code, 200)
+        c.credentials(HTTP_AUTHORIZATION="Bearer " + r.data["access"])
+        return c
+
+    def test_scoped_aggregates_with_coords(self):
+        d = self._client(self.inv).get("/api/analytics/districts/geo/").data
+        by_name = {r["district"]: r for r in d["districts"]}
+        self.assertEqual(set(by_name), {"Pune"})
+        pune = by_name["Pune"]
+        self.assertEqual((pune["lat"], pune["lng"]), (18.5204, 73.8567))
+        self.assertEqual((pune["cases"], pune["entities"], pune["evidence"]), (1, 1, 1))
+        self.assertEqual(d["unlocated_districts"], 0)
+
+    def test_sho_sees_all_but_not_unplaceable(self):
+        d = self._client(self.sho).get("/api/analytics/districts/geo/").data
+        by_name = {r["district"]: r for r in d["districts"]}
+        self.assertEqual(set(by_name), {"Pune", "Mumbai"})
+        self.assertEqual(by_name["Mumbai"]["cases"], 1)
+        # Atlantis has no gazetteer entry: counted, never plotted.
+        self.assertEqual(d["unlocated_districts"], 1)
+
+    def test_outsider_gets_nothing(self):
+        d = self._client(self.out).get("/api/analytics/districts/geo/").data
+        self.assertEqual((d["districts"], d["unlocated_districts"]), ([], 0))
+
+

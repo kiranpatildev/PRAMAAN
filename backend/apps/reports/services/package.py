@@ -23,12 +23,21 @@ def _doc(title):
     return doc, styles, buf
 
 
-def build_evidence_package(case, generated_by: str = "") -> bytes:
-    """Render the full package. Raises nothing — callers catch Exception."""
+MAX_EXHIBIT_BYTES = 5 * 1024 * 1024
+EXHIBIT_MIMES = {"image/png", "image/jpeg"}
+
+
+def build_evidence_package(case, generated_by: str = "", exhibits=None) -> bytes:
+    """Render the full package. Raises nothing — callers catch Exception.
+
+    exhibits: [{label, png_bytes, sha256, captured_at?}] rendered as §5 map
+    exhibits (caption + pixels + hash). Omitted entirely when empty, so
+    exhibit-free packages render byte-comparably to before (modulo dates).
+    """
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
-    from reportlab.platypus import HRFlowable, Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import HRFlowable, Image as RLImage, Paragraph, Spacer, Table, TableStyle
 
     from apps.evidence.models import ChainOfCustody, Evidence
     from apps.graph_api.models import ExtractedEntity, ExtractedRelation, ReviewStatus
@@ -91,8 +100,34 @@ def build_evidence_package(case, generated_by: str = "") -> bytes:
         "This package was generated from the PRAMAAN system of record. Recompute SHA-256 over the "
         "original files and compare against §4 to verify nothing was altered.", small))
 
+    exhibits = exhibits or []
+    if exhibits:
+        story.append(Paragraph(f"5. Map exhibits ({len(exhibits)})", h2))
+        for ex in exhibits:
+            story.append(Paragraph(f"{ex.get('label') or 'Map view'}"
+                                   f" — captured {ex.get('captured_at') or now}", styles["Normal"]))
+            story.append(Paragraph(f"SHA-256: {ex.get('sha256') or ''}", small))
+            story.append(Spacer(1, 3 * mm))
+            story.append(_exhibit_image(doc, ex.get("png_bytes") or b""))
+            story.append(Spacer(1, 6 * mm))
+
     doc.build(story)
     return buf.getvalue()
+
+
+def _exhibit_image(doc, png_bytes: bytes):
+    """Fit exhibit pixels to page width, preserving aspect. Never raises."""
+    from reportlab.platypus import Image as RLImage, Paragraph
+    from reportlab.lib.styles import getSampleStyleSheet
+    try:
+        from PIL import Image as PILImage
+        with PILImage.open(io.BytesIO(png_bytes)) as im:
+            w, h = im.size
+        scale = doc.width / max(w, 1)
+        return RLImage(io.BytesIO(png_bytes), width=doc.width, height=h * scale)
+    except Exception:
+        styles = getSampleStyleSheet()
+        return Paragraph("[map exhibit image could not be rendered]", styles["Normal"])
 
 
 def _table(rows, widths):

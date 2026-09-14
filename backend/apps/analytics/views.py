@@ -163,6 +163,47 @@ def district_list(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+def district_geo(request):
+    """Per-district map aggregates: coords + case/entity/evidence density.
+
+    Scoped by visible_case_ids() like the other district endpoints.
+    Districts the gazetteer cannot place are counted, not plotted
+    (unlocated_districts) — never invented coordinates. Three grouped
+    queries total regardless of district count.
+    """
+    from django.db.models import Count
+
+    from apps.evidence.models import Evidence
+    from apps.graph_api.models import ExtractedEntity
+    from apps.graph_api.services.geo import geocode
+
+    ids = visible_case_ids(request.user)
+    base = Case.objects.all() if ids is None else Case.objects.filter(pk__in=ids)
+    ent_scope = {} if ids is None else {"case_id__in": ids}
+    case_counts = {r["district"]: r["n"] for r in
+                   base.exclude(district="").values("district").annotate(n=Count("id"))}
+    ent_counts = {r["case__district"]: r["n"] for r in
+                  ExtractedEntity.objects.filter(case__district__in=list(case_counts),
+                                                 **ent_scope)
+                  .exclude(status="rejected").values("case__district").annotate(n=Count("id"))}
+    ev_counts = {r["case__district"]: r["n"] for r in
+                 Evidence.objects.filter(case__district__in=list(case_counts), **ent_scope)
+                 .values("case__district").annotate(n=Count("id"))}
+    out, unlocated = [], 0
+    for name in sorted(case_counts):
+        geo = geocode(name)
+        if geo is None:
+            unlocated += 1
+            continue
+        out.append({"district": name, "lat": geo[0], "lng": geo[1], "source": geo[2],
+                    "cases": case_counts[name],
+                    "entities": ent_counts.get(name, 0),
+                    "evidence": ev_counts.get(name, 0)})
+    return Response({"districts": out, "unlocated_districts": unlocated})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def district_overview(request):
     """District/state-level aggregates: caseload, risk, workload, growth."""
     from django.db.models import Count

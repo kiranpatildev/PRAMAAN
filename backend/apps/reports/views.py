@@ -40,21 +40,48 @@ def report_list(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def case_package(request):
-    """Generate the court-ready evidence package PDF (stored in MinIO + row)."""
+    """Generate the court-ready evidence package PDF (stored in MinIO + row).
+
+    JSON `{case_id}` keeps the exhibit-free behavior byte-comparable.
+    Multipart adds an optional `exhibit` image (PNG/JPEG, ≤5 MB) + label:
+    stored as photo evidence first (custody trail intact), then embedded in
+    the PDF with a matching SHA-256 caption — map snapshots included.
+    """
     import uuid
+    from datetime import datetime, timezone
 
     from apps.evidence.models import Evidence
     from apps.evidence.services import storage
 
-    from .services.package import build_evidence_package
+    from .services.package import MAX_EXHIBIT_BYTES, EXHIBIT_MIMES, build_evidence_package
 
     case = get_object_or_404(Case, pk=request.data.get("case_id"))
     if not user_can_view_case(request.user, case):
         return Response({"detail": "Forbidden."}, status=403)
     if not user_can_edit_case(request.user, case):
         return Response({"detail": "Forbidden."}, status=403)
+    exhibits = []
+    upload = request.FILES.get("exhibit")
+    if upload is not None:
+        if upload.content_type not in EXHIBIT_MIMES:
+            return Response({"detail": "exhibit must be PNG or JPEG."}, status=400)
+        if upload.size > MAX_EXHIBIT_BYTES:
+            return Response({"detail": "exhibit exceeds 5 MB."}, status=400)
+        from apps.evidence.services.ingest import create_evidence
+        blob = upload.read()
+        try:
+            ev = create_evidence(
+                case, file_name=upload.name or "map-exhibit.png", data=blob,
+                content_type=upload.content_type, uploaded_by=request.user,
+                file_type="photo", ip=request.META.get("REMOTE_ADDR"))
+        except ValueError as exc:
+            return Response({"detail": str(exc)[:200]}, status=400)
+        exhibits = [{"label": (request.data.get("exhibit_label") or "Map view")[:120],
+                     "png_bytes": blob, "sha256": ev.sha256,
+                     "captured_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}]
     try:
-        pdf = build_evidence_package(case, generated_by=str(request.user))
+        pdf = build_evidence_package(case, generated_by=str(request.user),
+                                     exhibits=exhibits or None)
     except Exception as exc:
         return Response({"detail": f"Report build failed: {exc}"[:300]}, status=500)
     key = f"reports/case_{case.id}/{uuid.uuid4().hex}_evidence-package.pdf"

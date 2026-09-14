@@ -62,6 +62,53 @@ class ReportTests(TestCase):
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertGreater(len(pdf), 2000)
 
+    def _png(self, color=(200, 30, 30)):
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (32, 32), color).save(buf, format="PNG")
+        return buf.getvalue()
+
+    def test_package_with_map_exhibit(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        c = self._client(self.inv)
+        png = self._png()
+        with mock.patch("apps.evidence.services.storage.upload_bytes", return_value="k"), \
+             mock.patch("apps.evidence.services.storage.presigned_get_url",
+                        return_value="http://minio/report.pdf"), \
+             mock.patch("apps.evidence.services.storage.object_exists", return_value=True), \
+             mock.patch("apps.evidence.services.storage.download_bytes", return_value=png):
+            r = c.post("/api/reports/case-package/",
+                       {"case_id": self.case.id, "exhibit_label": "Map view",
+                        "exhibit": SimpleUploadedFile("map.png", png, "image/png")},
+                       format="multipart")
+        self.assertEqual(r.status_code, 201, r.content[:300])
+        # Exhibit stored as evidence (custody intact) and embedded in the PDF.
+        ev = Evidence.objects.get(case=self.case, file_name="map.png")
+        self.assertEqual(ev.file_type, "photo")
+        self.assertTrue(ChainOfCustody.objects.filter(evidence=ev).exists())
+        rep = Report.objects.get(pk=r.data["id"])
+        self.assertGreater(rep.size_bytes, 1000)
+        lst = c.get(f"/api/reports/?case_id={self.case.id}").data
+        self.assertEqual(len(lst), 1)
+
+    def test_package_exhibit_validation(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        c = self._client(self.inv)
+        bad = c.post("/api/reports/case-package/",
+                     {"case_id": self.case.id,
+                      "exhibit": SimpleUploadedFile("x.txt", b"nope", "text/plain")},
+                     format="multipart")
+        self.assertEqual(bad.status_code, 400)
+        big = c.post("/api/reports/case-package/",
+                     {"case_id": self.case.id,
+                      "exhibit": SimpleUploadedFile("big.png", b"0" * (5 * 1024 * 1024 + 1),
+                                                    "image/png")},
+                     format="multipart")
+        self.assertEqual(big.status_code, 400)
+        # No evidence rows leak from rejected exhibits.
+        self.assertFalse(Evidence.objects.filter(file_name__in=["x.txt", "big.png"]).exists())
+
     def test_outsider_forbidden(self):
         c = self._client(_mkuser("out12", Role.INVESTIGATOR))
         self.assertEqual(c.post("/api/reports/case-package/", {"case_id": self.case.id}).status_code, 403)

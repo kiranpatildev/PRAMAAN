@@ -10,6 +10,7 @@ import { TeamTab } from "@/components/case/TeamTab";
 import { EvidenceTab } from "@/components/case/EvidenceTab";
 import { EntitiesTab } from "@/components/case/EntitiesTab";
 import { NetworkTab } from "@/components/case/NetworkTab";
+import { MapTab } from "@/components/case/MapTab";
 import { TimelineTab } from "@/components/case/TimelineTab";
 import { CrossCaseTab } from "@/components/case/CrossCaseTab";
 import { NotesTasksTab } from "@/components/case/NotesTasksTab";
@@ -30,7 +31,7 @@ import { isSho } from "@/lib/auth";
 import type { CaseItem } from "@/lib/types";
 
 const VALID_TABS = new Set([
-  "overview", "team", "evidence", "entities", "network", "timeline",
+  "overview", "team", "evidence", "entities", "network", "map", "timeline",
   "cross", "analytics", "notes", "audit", "reports",
 ]);
 
@@ -183,6 +184,7 @@ function CaseWorkspaceBody({ params }: { params: { id: string } }) {
     { id: "evidence", label: "Evidence", count: kase.evidence_count ?? 0 },
     { id: "entities", label: "Entities", count: kase.entities_count ?? 0 },
     { id: "network", label: "Network" },
+    { id: "map", label: "Map" },
     { id: "timeline", label: "Timeline", count: timelineCount },
     { id: "cross", label: "Cross-Case Links" },
     { id: "analytics", label: "Analytics" },
@@ -230,6 +232,7 @@ function CaseWorkspaceBody({ params }: { params: { id: string } }) {
         {tab === "evidence" && <EvidenceTab caseId={kase.id} sho={sho} canContribute={canContribute} />}
         {tab === "entities" && <EntitiesTab caseId={kase.id} sho={sho} canVerify={canContribute} />}
         {tab === "network" && <NetworkTab caseId={kase.id} highlightLabels={highlightLabels} isolateKeys={isolateKeys} canEdit={sho || canContribute} />}
+        {tab === "map" && <MapTab caseId={kase.id} sho={sho} canVerify={canContribute} canEdit={sho || canContribute} />}
         {tab === "timeline" && (
           <TimelineTab
             caseId={kase.id}
