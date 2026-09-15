@@ -260,3 +260,74 @@ class SearchApiTests(TestCase):
         self.assertEqual(inv_c.get("/api/search/?q=rahul&case_id=99999").status_code, 404)
         self.assertEqual(out_c.get(f"/api/search/?q=rahul&case_id={self.case.id}").status_code, 403)
         self.assertEqual(inv_c.get("/api/search/?q=x").status_code, 200)
+
+
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, GEMINI_API_KEY="test-key")
+class GeminiFallbackTests(TestCase):
+    """Retired-model 404s must walk the fallback chain, not outage the copilot."""
+
+    def _client_with(self, calls, fail_models):
+        import types as pytypes
+
+        class _GenResp:
+            def __init__(self, text):
+                self.text = text
+
+        class _Models:
+            def generate_content(self, model=None, contents=None, **kwargs):
+                calls.append(model)
+                if model in fail_models:
+                    raise Exception(
+                        "404 NOT_FOUND. {'error': {'code': 404, 'message': "
+                        f"'This model models/{model} is no longer available.', "
+                        "'status': 'NOT_FOUND'}}")
+                return _GenResp("fallback answer")
+
+        class _Client:
+            def __init__(self, api_key=None):
+                self.models = _Models()
+
+        mod = pytypes.ModuleType("google.genai")
+        mod.Client = _Client
+        parent = pytypes.ModuleType("google")
+        parent.genai = mod
+        return mock.patch.dict(sys.modules, {"google": parent, "google.genai": mod})
+
+    def test_retired_default_falls_back(self):
+        from apps.copilot.services import gemini
+        calls: list = []
+        with self._client_with(calls, {gemini._candidate_models()[0]}):
+            out = gemini.generate("hello")
+        self.assertEqual(out, "fallback answer")
+        self.assertGreaterEqual(len(calls), 2)
+        # First attempt is the configured model, second is a fallback.
+        self.assertNotEqual(calls[0], calls[1])
+
+    def test_all_models_down_raises_unavailable(self):
+        from apps.copilot.services import gemini
+        from apps.copilot.services.gemini import GeminiUnavailable
+        calls: list = []
+        with self._client_with(calls, set(gemini._candidate_models())):
+            with self.assertRaises(GeminiUnavailable):
+                gemini.generate("hello")
+
+    def test_non_retired_error_does_not_fallback(self):
+        import types as pytypes
+        from apps.copilot.services import gemini
+        from apps.copilot.services.gemini import GeminiUnavailable
+
+        class _Models:
+            def generate_content(self, model=None, contents=None, **kwargs):
+                raise Exception("500 Internal error")
+
+        class _Client:
+            def __init__(self, api_key=None):
+                self.models = _Models()
+
+        mod = pytypes.ModuleType("google.genai")
+        mod.Client = _Client
+        parent = pytypes.ModuleType("google")
+        parent.genai = mod
+        with mock.patch.dict(sys.modules, {"google": parent, "google.genai": mod}):
+            with self.assertRaises(GeminiUnavailable):
+                gemini.generate("hello")

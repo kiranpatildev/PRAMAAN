@@ -28,6 +28,7 @@ export function NetworkTab({ caseId: cid, highlightLabels = [], isolateKeys = []
   const [relCounts, setRelCounts] = useState<{ type: string; count: number }[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string[]>([]);
+  const [highlightEdges, setHighlightEdges] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -57,12 +58,14 @@ export function NetworkTab({ caseId: cid, highlightLabels = [], isolateKeys = []
   useEffect(() => {
     if (!highlightLabels.length || !nodes.length) {
       setHighlight([]);
+      setHighlightEdges([]);
       return;
     }
     const ids = nodes
       .filter((n) => highlightLabels.some((l) => n.label.toLowerCase() === l.toLowerCase()))
       .map((n) => n.id);
     setHighlight(ids);
+    setHighlightEdges([]);
     if (ids.length) canvasRef.current?.focus(ids[0]);
   }, [highlightLabels, nodes]);
 
@@ -77,6 +80,7 @@ export function NetworkTab({ caseId: cid, highlightLabels = [], isolateKeys = []
     if (!matched.length) return;
     setSelectedId(matched[0]);
     setHighlight(matched);
+    setHighlightEdges([]);
     canvasRef.current?.focus(matched[0]);
     canvasRef.current?.isolate(matched.length === 1 ? matched[0] : null);
   }, [isolateKeys, nodes]);
@@ -120,8 +124,9 @@ export function NetworkTab({ caseId: cid, highlightLabels = [], isolateKeys = []
             setSelectedId(id);
             canvasRef.current?.focus(id);
           }}
-          onHighlight={(ids) => {
+          onHighlight={(ids, edgeIds) => {
             setHighlight(ids ?? []);
+            setHighlightEdges(edgeIds ?? []);
             if (ids?.length) canvasRef.current?.focus(ids[0]);
           }}
         />
@@ -140,12 +145,14 @@ export function NetworkTab({ caseId: cid, highlightLabels = [], isolateKeys = []
             clusters={clusters}
             selectedId={selectedId}
             highlightIds={highlight}
+            highlightEdgeIds={highlightEdges}
             onSelect={setSelectedId}
             onExpand={onExpand}
             onFilter={() => selectedId && canvasRef.current?.isolate(selectedId)}
             onReset={() => {
               canvasRef.current?.isolate(null);
               setHighlight([]);
+              setHighlightEdges([]);
               refresh();
             }}
           />

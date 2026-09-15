@@ -6,13 +6,14 @@ import { GraphCanvas, type GraphCanvasHandle, type CanvasCluster, type CanvasEdg
 import { Button } from "../ui/Button";
 
 /** Center column assembly: toolbar, zoom stack, full-bleed canvas, footer. */
-export function NetworkGraph({ canvasRef, nodes, edges, clusters, selectedId, highlightIds, onSelect, onExpand, onFilter, onReset }: {
+export function NetworkGraph({ canvasRef, nodes, edges, clusters, selectedId, highlightIds, highlightEdgeIds = [], onSelect, onExpand, onFilter, onReset }: {
   canvasRef: RefObject<GraphCanvasHandle>;
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   clusters: CanvasCluster[];
   selectedId: string | null;
   highlightIds: string[];
+  highlightEdgeIds?: string[];
   onSelect: (id: string | null) => void;
   onExpand: () => void;
   onFilter: () => void;
@@ -86,6 +87,7 @@ export function NetworkGraph({ canvasRef, nodes, edges, clusters, selectedId, hi
         clusters={clusters}
         selectedId={selectedId}
         highlightIds={highlightIds}
+        highlightEdgeIds={highlightEdgeIds}
         onSelect={onSelect}
         onZoom={(s) => setZoom(Math.round(s * 100))}
       />

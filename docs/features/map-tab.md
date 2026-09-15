@@ -84,6 +84,32 @@ as any manually uploaded file.
   pings need a device feed (follow-up). Tower pins need tower columns in
   CDR evidence; hyphenated names ("Pune-Kothrud") inherit city coords with
   a `gazetteer-city` tag.
-- **Tiles need network:** OpenFreeMap has no offline fallback; tile failure
-  shows an explicit "Map unavailable" overlay (pins/data below unaffected).
+- **Tiles are offline-first with live upgrade:** the map mounts an
+  all-local base instantly (dark tactical background, dashed reference
+  graticule, bundled Natural Earth India state/country boundaries — public
+  domain, vendored at `frontend/public/geo/`), so pins, heatmaps, trails and
+  draw tools work in <1 s with zero network. Live tiles then upgrade in the
+  background (`frontend/lib/mapStyles.ts`): every candidate races
+  concurrently in its own hidden 256px probe map, and a win requires real
+  `load` PLUS tile content (`areTilesLoaded()` — `load` alone fires on empty
+  canvases, notably raster styles whose tiles then fail). First verified win
+  swaps onto the visible map via a staging div (camera preserved, never
+  blanked); losers self-clean; a 30 s deadline bounds the pass. All tile,
+  font, sprite and TileJSON sub-requests go through MapLibre
+  `transformRequest` → same-origin `/tiles/*` rewrites (`next.config.mjs`,
+  flowing through nginx untouched), so the browser never touches a tile CDN
+  directly. Candidates are all keyless (OpenFreeMap vectors via proxy →
+  direct OpenFreeMap → OSM raster via proxy); CARTO is deliberately excluded
+  because its tiles now require an API key and render watermarked without
+  one. End states are always honest: `… · live` chip on success, amber
+  "offline base" banner when every host fails (map stays fully usable).
+  `[pramaan-map]` console lines log every attempt for diagnosis.
+  3D buildings need a vector style and re-enable automatically after an
+  upgrade remount.
+  Tile degradation shows a non-blocking amber banner with the active base
+  name + Retry; pins, heatmaps, trails and draw tools render even fully
+  offline (only the photographic base layer is missing). A blocking
+  "Map unavailable" overlay appears only if the map library itself fails.
+  3D buildings need a vector style (OpenFreeMap/Carto); raster/offline
+  styles report the toggle unavailable.
   Geocoding search uses Nominatim (rate-limited, best-effort).

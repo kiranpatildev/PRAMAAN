@@ -263,7 +263,7 @@ community mean confidence <.5) — sklearn/torch are named swap-ins, not
 installed.
 
 **Gemini RAG**: `google-genai` SDK (the old `google-generativeai` package
-is deprecated), generation default `gemini-2.0-flash`, top-6 hybrid
+is deprecated), generation default `gemini-2.5-flash`, top-6 hybrid
 retrieval (vector, then full-text fill; icontains fallback off-Postgres).
 RAG instead of a chatbot because the corpus is case-scoped per query and
 every claim must cite numbered excerpts — the prompt instructs
@@ -527,5 +527,6 @@ toward ~100 concurrent users; backup/retention jobs.
 7. `apps/admin_register.py` (dead, 414 bytes) — safe to delete?
 8. Test count cited (99) is from the last full run with no code changes
    since; re-run `python manage.py test` if any file moved.
+
 
 

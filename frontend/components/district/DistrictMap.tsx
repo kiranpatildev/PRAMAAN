@@ -3,10 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { MapPin } from "lucide-react";
 import { Empty } from "../ui/Empty";
+import { Button } from "../ui/Button";
 import type { DistrictGeo } from "@/lib/endpoints";
 import "maplibre-gl/dist/maplibre-gl.css";
-
-const STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -24,7 +23,11 @@ export function DistrictMap({ districts, selected, onSelect }: {
   const liveRef = useRef({ districts, selected, onSelect });
   liveRef.current = { districts, selected, onSelect };
   const [tileError, setTileError] = useState("");
+  const [tileWarn, setTileWarn] = useState("");
+  const [baseLabel, setBaseLabel] = useState("");
+  const [retry, setRetry] = useState(0);
   const [empty, setEmpty] = useState(false);
+  const fittedRef = useRef(false);
 
   const clickRef = useRef<((e: import("maplibre-gl").MapMouseEvent & {
     features?: import("maplibre-gl").MapGeoJSONFeature[];
@@ -137,10 +140,120 @@ export function DistrictMap({ districts, selected, onSelect }: {
     syncData();
   }
 
+  const upgradeGen = useRef(0);
+  const mountedRef = useRef(false);
+
+  function attachMap(map: import("maplibre-gl").Map) {
+    mapRef.current = map as never;
+    const ml = mlRef.current;
+    if (ml) map.addControl(new ml.NavigationControl({ showCompass: false }), "bottom-left");
+    setupLayers();
+    // Refit only on first mount; upgrades preserve the user's view.
+    if (!fittedRef.current) {
+      fittedRef.current = true;
+      const list = liveRef.current.districts;
+      const first = list[0];
+      if (first && ml) {
+        try {
+          const b = new ml.LngLatBounds([first.lng, first.lat], [first.lng, first.lat]);
+          for (const d of list.slice(1)) b.extend([d.lng, d.lat]);
+          map.fitBounds(b, { padding: 70, maxZoom: 6 });
+        } catch { /* ignore */ }
+      }
+    }
+    let errorCount = 0;
+    map.on("error", () => {
+      errorCount += 1;
+      if (errorCount < 4 || mapRef.current !== (map as never)) return;
+      setTileWarn("Base tiles degraded. Data below is unaffected.");
+    });
+  }
+
+  async function runUpgrade() {
+    const gen = ++upgradeGen.current;
+    const t0 = Date.now();
+    while (!mountedRef.current && Date.now() - t0 < 8000) {
+      await new Promise((r) => setTimeout(r, 150));
+      if (gen !== upgradeGen.current) return;
+    }
+    const ml = mlRef.current;
+    if (!ml || !mountedRef.current || gen !== upgradeGen.current) return;
+    const { upgradeCandidates, raceCandidates, awaitMapLoad, createMapTransformRequest, logTile } = await import("@/lib/mapStyles");
+    if (gen !== upgradeGen.current) return;
+    const cands = upgradeCandidates();
+    const start = Date.now();
+    const win = await raceCandidates(ml as never, cands, {
+      isCancelled: () => gen !== upgradeGen.current,
+      onProbe: (label, ok, ms) => logTile("candidate-probe", `${label} → ${ok ? "VERIFIED" : "failed"} in ${ms}ms`),
+    });
+    if (!win || gen !== upgradeGen.current) {
+      if (!win && gen === upgradeGen.current) {
+        setBaseLabel("Offline base");
+        setTileWarn("Live tiles unreachable — offline base. District data below is live.");
+        logTile("upgrade", `all ${cands.length} candidates failed in ${Date.now() - start}ms`);
+      }
+      return;
+    }
+
+    // Winner found! Prepare swap without destroying current map
+    const prev = mapRef.current as unknown as import("maplibre-gl").Map | null;
+    let center: [number, number] = [78.9, 21.1];
+    let zoom = 4;
+    try {
+      if (prev) {
+        const cc = prev.getCenter();
+        center = [cc.lng, cc.lat];
+        zoom = prev.getZoom();
+      }
+    } catch { /* ignore */ }
+
+    if (!divRef.current || gen !== upgradeGen.current) return;
+    const staging = document.createElement("div");
+    staging.style.cssText = "position:absolute;inset:0;width:100%;height:100%;";
+    divRef.current.appendChild(staging);
+
+    try {
+      const map = new ml.Map({
+        container: staging,
+        style: win.style as never,
+        center,
+        zoom,
+        transformRequest: createMapTransformRequest(),
+        attributionControl: { compact: true },
+      });
+      const loaded = await awaitMapLoad(map, 6000);
+      if (!loaded || gen !== upgradeGen.current) {
+        try { map.remove(); } catch { /* ignore */ }
+        try { staging.remove(); } catch { /* ignore */ }
+        setTileWarn("Live tiles flickered — staying on the working base.");
+        return;
+      }
+
+      // Successfully loaded! Now remove prev and cleanup old container
+      try { prev?.remove(); } catch { /* ignore */ }
+      if (divRef.current) {
+        Array.from(divRef.current.children).forEach((el) => {
+          if (el !== staging) el.remove();
+        });
+      }
+      attachMap(map);
+      setBaseLabel(`${win.label} · live`);
+      setTileError("");
+      setTileWarn("");
+      logTile("upgrade", `${win.label} live in ${Date.now() - start}ms`);
+      return;
+    } catch {
+      try { staging.remove(); } catch { /* ignore */ }
+      return;
+    }
+  }
+
+  // Mount once: offline base instantly (district pins live in <1s).
   useEffect(() => {
     let dead = false;
-    let loadTimer: ReturnType<typeof setTimeout> | null = null;
     let ro: ResizeObserver | null = null;
+    const genRef = upgradeGen;
+    const mountRef = mountedRef;
     (async () => {
       let ml: typeof import("maplibre-gl");
       try {
@@ -152,47 +265,39 @@ export function DistrictMap({ districts, selected, onSelect }: {
       if (dead || !divRef.current) return;
       mlRef.current = ml;
       try {
+        const { loadBoundaries, buildOfflineStyle, awaitMapLoad, createMapTransformRequest, logTile } = await import("@/lib/mapStyles");
+        const t0 = performance.now();
+        const bounds = await loadBoundaries();
+        if (dead || !divRef.current) return;
         const map = new ml.Map({
           container: divRef.current,
-          style: STYLE_URL,
+          style: buildOfflineStyle(bounds) as never,
           center: [78.9, 21.1],
           zoom: 4,
+          transformRequest: createMapTransformRequest(),
           attributionControl: { compact: true },
         });
-        mapRef.current = map;
-        map.addControl(new ml.NavigationControl({ showCompass: false }), "bottom-left");
-        map.on("error", () => {
-          if (!dead) setTileError("Map tiles failed to load (OpenFreeMap unreachable). Data below is unaffected — retry shortly.");
-        });
-        map.on("load", () => {
-          if (loadTimer) clearTimeout(loadTimer);
-          if (dead) return;
-          setTileError("");
-          setupLayers();
-          const list = liveRef.current.districts;
-          const first = list[0];
-          if (first) {
-            try {
-              const b = new ml.LngLatBounds([first.lng, first.lat], [first.lng, first.lat]);
-              for (const d of list.slice(1)) b.extend([d.lng, d.lat]);
-              map.fitBounds(b, { padding: 70, maxZoom: 6 });
-            } catch { /* ignore */ }
-          }
-        });
-        loadTimer = setTimeout(() => {
-          if (!dead) setTileError("Map tiles are taking too long (OpenFreeMap unreachable?). Data below is unaffected — retry shortly.");
-        }, 20000);
+        await awaitMapLoad(map, 4000);
+        if (dead) {
+          try { map.remove(); } catch { /* ignore */ }
+          return;
+        }
+        attachMap(map);
+        mountedRef.current = true;
+        setBaseLabel("Offline base · locating live tiles…");
+        logTile("offline-mount", `${Math.round(performance.now() - t0)}ms`);
         ro = new ResizeObserver(() => {
-          try { map.resize(); } catch { /* ignore */ }
+          try { mapRef.current?.resize(); } catch { /* ignore */ }
         });
-        ro.observe(divRef.current);
+        if (divRef.current) ro.observe(divRef.current);
       } catch {
         if (!dead) setTileError("Map failed to start. Check your connection and retry.");
       }
     })();
     return () => {
       dead = true;
-      if (loadTimer) clearTimeout(loadTimer);
+      genRef.current++;
+      mountRef.current = false;
       try { ro?.disconnect(); } catch { /* ignore */ }
       try { popupRef.current?.remove(); } catch { /* ignore */ }
       try { mapRef.current?.remove(); } catch { /* ignore */ }
@@ -200,6 +305,16 @@ export function DistrictMap({ districts, selected, onSelect }: {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Background live-tile upgrade; manual Retry re-runs it.
+  useEffect(() => {
+    const genRef = upgradeGen;
+    void runUpgrade();
+    return () => {
+      genRef.current++;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retry]);
 
   // syncData is ref-stable by construction (reads only liveRef/mapRef).
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -216,9 +331,40 @@ export function DistrictMap({ districts, selected, onSelect }: {
 .maplibregl-popup-tip{border-top-color:#1a2230!important;border-bottom-color:#1a2230!important}
 .maplibregl-popup-close-button{color:#a3b1c2!important}`}</style>
       <div ref={divRef} className="absolute inset-0" role="application" aria-label="District density map" />
+      {tileWarn && !tileError ? (
+        <div className="absolute inset-x-3 top-3 z-10 flex items-center gap-2 rounded-md border border-amber-500/30 bg-[#1a1407]/95 px-3 py-2">
+          <MapPin size={13} strokeWidth={1.8} aria-hidden className="shrink-0 text-amber-400" />
+          <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-amber-200" title={tileWarn}>
+            {tileWarn}
+          </p>
+          {baseLabel ? (
+            <span className="shrink-0 rounded border border-line-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-3">
+              {baseLabel}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              setTileWarn("");
+              setRetry((n) => n + 1);
+            }}
+            className="shrink-0 rounded border border-line-2 px-2 py-0.5 font-mono text-[10.5px] text-fg-2 hover:border-cyan hover:text-fg"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {!tileWarn && !tileError && baseLabel ? (
+        <div className="absolute right-3 top-3 z-10 rounded border border-line bg-panel/90 px-2 py-1 font-mono text-[10px] text-fg-4">
+          {baseLabel}
+        </div>
+      ) : null}
       {tileError ? (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg p-6">
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-bg p-6">
           <Empty icon={MapPin} title="Map unavailable" body={tileError} />
+          <Button variant="ghost" small onClick={() => { setTileError(""); setRetry((n) => n + 1); }}>
+            Retry map
+          </Button>
         </div>
       ) : null}
       {empty && !tileError ? (

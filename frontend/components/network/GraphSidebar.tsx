@@ -6,34 +6,54 @@ import { Button } from "../ui/Button";
 import { ENTITY_META, entityKind, type EntityKind } from "@/lib/case";
 import type { CanvasEdge, CanvasNode } from "./GraphCanvas";
 
-function bfsPath(nodes: CanvasNode[], edges: CanvasEdge[], from: string, to: string): string[] | null {
-  const adj = new Map<string, string[]>();
+export interface ShortPath {
+  nodes: string[];
+  edges: string[];
+}
+
+function bfsPath(nodes: CanvasNode[], edges: CanvasEdge[], from: string, to: string): ShortPath | null {
+  // Adjacency keeps the edge identity so the canvas can highlight the exact
+  // links (not just the endpoint nodes). Parallel edges resolve to the
+  // highest-confidence link — deterministic and evidence-led.
+  const adj = new Map<string, { next: string; edgeId: string; conf: number }[]>();
   for (const n of nodes) adj.set(n.id, []);
   for (const e of edges) {
-    adj.get(e.source)?.push(e.target);
-    adj.get(e.target)?.push(e.source);
+    const conf = e.confidence ?? 0;
+    adj.get(e.source)?.push({ next: e.target, edgeId: e.id, conf });
+    adj.get(e.target)?.push({ next: e.source, edgeId: e.id, conf });
   }
   if (!adj.has(from) || !adj.has(to)) return null;
-  const prev = new Map<string, string | null>([[from, null]]);
+  if (from === to) return { nodes: [from], edges: [] };
+  const prev = new Map<string, { from: string; edgeId: string } | null>([[from, null]]);
   const queue = [from];
   while (queue.length) {
     const cur = queue.shift() as string;
     if (cur === to) break;
-    for (const nx of adj.get(cur) ?? []) {
-      if (!prev.has(nx)) {
-        prev.set(nx, cur);
-        queue.push(nx);
+    // Highest-confidence neighbours first: ties in hop-count prefer
+    // stronger evidence without changing BFS shortest-hop semantics.
+    const nbs = [...(adj.get(cur) ?? [])].sort((a, b) => b.conf - a.conf);
+    for (const { next, edgeId } of nbs) {
+      if (!prev.has(next)) {
+        prev.set(next, { from: cur, edgeId });
+        queue.push(next);
       }
     }
   }
   if (!prev.has(to)) return null;
-  const path: string[] = [];
+  const pathNodes: string[] = [];
+  const pathEdges: string[] = [];
   let cur: string | null = to;
   while (cur) {
-    path.unshift(cur);
-    cur = prev.get(cur) ?? null;
+    pathNodes.unshift(cur);
+    const p = prev.get(cur);
+    if (p) {
+      pathEdges.unshift(p.edgeId);
+      cur = p.from;
+    } else {
+      cur = null;
+    }
   }
-  return path;
+  return { nodes: pathNodes, edges: pathEdges };
 }
 
 export function GraphSidebar({ nodes, edges, relCounts, onFocusId, onHighlight }: {
@@ -41,7 +61,7 @@ export function GraphSidebar({ nodes, edges, relCounts, onFocusId, onHighlight }
   edges: CanvasEdge[];
   relCounts: { type: string; count: number }[];
   onFocusId: (id: string) => void;
-  onHighlight: (ids: string[] | null) => void;
+  onHighlight: (ids: string[] | null, edgeIds?: string[] | null) => void;
 }) {
   const [q, setQ] = useState("");
   const [from, setFrom] = useState("");
@@ -71,14 +91,24 @@ export function GraphSidebar({ nodes, edges, relCounts, onFocusId, onHighlight }
       setPathMsg("Pick both endpoints.");
       return;
     }
+    if (from === to) {
+      setPathMsg("Same entity — pick two different endpoints.");
+      onHighlight([from], []);
+      onFocusId(from);
+      return;
+    }
     const path = bfsPath(nodes, edges, from, to);
     if (!path) {
       setPathMsg("No connecting path in this view.");
-      onHighlight(null);
+      onHighlight(null, null);
       return;
     }
-    setPathMsg(`${path.length - 1} hop${path.length === 2 ? "" : "s"}`);
-    onHighlight(path);
+    const hops = path.nodes.length - 1;
+    const byId = new Map(nodes.map((n) => [n.id, n.label]));
+    const route = path.nodes.map((id) => byId.get(id) ?? id).join(" → ");
+    setPathMsg(`${hops} hop${hops === 1 ? "" : "s"} · ${route}`);
+    onHighlight(path.nodes, path.edges);
+    onFocusId(path.nodes[Math.floor(path.nodes.length / 2)] ?? path.nodes[0]);
   }
 
   return (
@@ -179,7 +209,7 @@ export function GraphSidebar({ nodes, edges, relCounts, onFocusId, onHighlight }
                 setFrom("");
                 setTo("");
                 setPathMsg("");
-                onHighlight(null);
+                onHighlight(null, null);
               }}
             >
               Clear

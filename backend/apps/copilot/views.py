@@ -402,7 +402,7 @@ def _answer_generic(request, case_ids, question):
         try:
             answer = generate(prompt)
             return {"question": question, "intent": "generic", "generated": True,
-                    "model": getattr(settings, "GEMINI_MODEL", "gemini-2.0-flash"),
+                    "model": getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash"),
                     "vector_used": found["vector_used"], "answer": answer, "citations": citations}
         except GeminiUnavailable:
             pass  # fall through to the extractive answer below

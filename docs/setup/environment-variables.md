@@ -17,8 +17,8 @@ Django/Next defaults. Only `.env.example` is committed; copy it to `.env`.
 | `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` / `MINIO_BUCKET` / `MINIO_SECURE` | `storage.py` | S3-compatible store; bucket `evidence`; `MINIO_SECURE="1"` switches to https | `minio:9000` in compose |
 | `CORS_ALLOWED_ORIGINS` | django-cors-headers | Comma list; compose sets `:3000,:8080` | — |
 | `FIELD_ENCRYPTION_KEY` | ⚠️ read, **unused** | Intended Fernet key for field encryption; `apps/security.py` exists but no field uses it | (empty) |
-| `GEMINI_API_KEY` | copilot `gemini.py` | Enables embeddings (`text-embedding-004`) + grounded generation (`GEMINI_MODEL`, default `gemini-2.0-flash`). Empty = keyword-only, extractive answers | (empty) |
-| `GEMINI_MODEL` | copilot | Generation model name | `gemini-2.0-flash` |
+| `GEMINI_API_KEY` | copilot `gemini.py` | Enables embeddings (`text-embedding-004`) + grounded generation (`GEMINI_MODEL`, default `gemini-2.5-flash`). Empty = keyword-only, extractive answers | (empty) |
+| `GEMINI_MODEL` | copilot | Generation model name (tried first; retired-model 404s fall back through `1.5-flash → 3.6/3.5/3.8-flash`) | `gemini-2.5-flash` |
 | `RAG_TOP_K` | retrieval | Citations per answer (default `6`) | `6` |
 | `SENTRY_DSN` | ⚠️ in `.env.example` only | **Nothing reads it** — no Sentry SDK is installed; reserved name | (empty) |
 | `POSTGRES_USER/PASSWORD/DB` | db container | `pramaan`/`pramaan`/`pramaan` (init only) | — |

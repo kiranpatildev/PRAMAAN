@@ -65,9 +65,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
   clusters: CanvasCluster[];
   selectedId: string | null;
   highlightIds?: string[];
+  highlightEdgeIds?: string[];
   onSelect: (id: string | null) => void;
   onZoom?: (scale: number) => void;
-}>(function GraphCanvas({ nodes, edges, clusters, selectedId, highlightIds = [], onSelect, onZoom }, ref) {
+}>(function GraphCanvas({ nodes, edges, clusters, selectedId, highlightIds = [], highlightEdgeIds = [], onSelect, onZoom }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const state = useRef({
     sim: [] as SimNode[],
@@ -79,6 +80,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
     alpha: 1,
     selectedId: null as string | null,
     highlight: [] as string[],
+    highlightEdges: [] as string[],
     isolated: null as string | null,
     onSelect: (_id: string | null) => {},
     onZoom: null as ((scale: number) => void) | null,
@@ -86,13 +88,14 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
   });
   state.current.selectedId = selectedId;
   state.current.highlight = highlightIds;
+  state.current.highlightEdges = highlightEdgeIds;
   state.current.onSelect = onSelect;
   state.current.onZoom = onZoom ?? null;
 
   // Selection/highlight changes repaint even when physics has cooled.
   useEffect(() => {
     state.current.dirty = true;
-  }, [selectedId, highlightIds]);
+  }, [selectedId, highlightIds, highlightEdgeIds]);
 
   // Rebuild simulation when data changes.
   useEffect(() => {
@@ -375,7 +378,14 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
         c.fillText(cl.label.toUpperCase(), sx, sy - r - 8);
       }
 
-      // Links.
+      // Links. A shortest-path run highlights the exact edges (by id);
+      // everything else dims so the route reads at a glance.
+      const pathEdges = new Set(s.highlightEdges);
+      const pathActive = pathEdges.size > 0;
+      const hlNodes = new Set(s.highlight);
+      const onPathFallback = (e: CanvasEdge) =>
+        pathActive && hlNodes.has(e.source) && hlNodes.has(e.target);
+      // Pass 1: base + dimmed links.
       for (const e of s.edges) {
         if (!vis(e.source) || !vis(e.target)) continue;
         const a = byId.get(e.source) as SimNode;
@@ -384,16 +394,61 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
         const sel =
           s.selectedId != null &&
           ((e.source === s.selectedId || e.target === s.selectedId));
+        const onPath = pathEdges.has(e.id) || (!pathEdges.size && onPathFallback(e));
+        if (onPath) continue; // drawn in pass 2, above the dimmed layer
         c.beginPath();
         c.moveTo(a.x * s.scale + s.ox, a.y * s.scale + s.oy);
         c.lineTo(b.x * s.scale + s.ox, b.y * s.scale + s.oy);
-        c.strokeStyle = sel ? "rgba(0,217,255,.55)" : soft ? "rgba(120,140,160,.12)" : "rgba(0,217,255,.28)";
-        c.lineWidth = soft ? 0.7 : 1;
+        if (pathActive) {
+          c.strokeStyle = "rgba(120,140,160,.10)";
+          c.lineWidth = 0.7;
+        } else {
+          c.strokeStyle = sel ? "rgba(0,217,255,.55)" : soft ? "rgba(120,140,160,.12)" : "rgba(0,217,255,.28)";
+          c.lineWidth = soft ? 0.7 : 1;
+        }
         c.stroke();
       }
+      // Pass 2: the path itself — bright, wide, with a glow so it is
+      // unmistakable even on dense canvases. Arrowheads mark direction.
+      if (pathActive) {
+        c.save();
+        c.shadowColor = "rgba(0,217,255,.8)";
+        c.shadowBlur = 8;
+        for (const e of s.edges) {
+          const onPath = pathEdges.has(e.id) || (!pathEdges.size && onPathFallback(e));
+          if (!onPath || !vis(e.source) || !vis(e.target)) continue;
+          const a = byId.get(e.source) as SimNode;
+          const b = byId.get(e.target) as SimNode;
+          const ax = a.x * s.scale + s.ox;
+          const ay = a.y * s.scale + s.oy;
+          const bx = b.x * s.scale + s.ox;
+          const by = b.y * s.scale + s.oy;
+          c.beginPath();
+          c.moveTo(ax, ay);
+          c.lineTo(bx, by);
+          c.strokeStyle = "rgba(0,217,255,.95)";
+          c.lineWidth = 2.5;
+          c.stroke();
+          // Direction chevron at the midpoint.
+          const mx = (ax + bx) / 2;
+          const my = (ay + by) / 2;
+          const ang = Math.atan2(by - ay, bx - ax);
+          const s6 = 6;
+          c.beginPath();
+          c.moveTo(mx + Math.cos(ang) * s6, my + Math.sin(ang) * s6);
+          c.lineTo(mx + Math.cos(ang + 2.5) * s6, my + Math.sin(ang + 2.5) * s6);
+          c.lineTo(mx + Math.cos(ang - 2.5) * s6, my + Math.sin(ang - 2.5) * s6);
+          c.closePath();
+          c.fillStyle = "rgba(0,217,255,.95)";
+          c.fill();
+        }
+        c.restore();
+      }
 
-      // Nodes.
+      // Nodes. Path members get a filled halo so the route endpoints
+      // read even when zoomed out; plain highlights keep the thin ring.
       const hl = new Set(s.highlight);
+      const pathOn = s.highlightEdges.length > 0 || hl.size > 0;
       for (const n of s.sim) {
         if (n.hidden) continue;
         const sx = n.x * s.scale + s.ox;
@@ -402,7 +457,18 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, {
         const r = nodeRadius(n.type) * Math.max(0.7, Math.min(1.4, s.scale));
         const col = nodeColor(n.type);
         const sel = s.selectedId === n.id;
-        if (sel || hl.has(n.id)) {
+        const inPath = hl.has(n.id);
+        if (inPath && pathOn) {
+          c.beginPath();
+          c.arc(sx, sy, r + 7, 0, Math.PI * 2);
+          c.fillStyle = "rgba(0,217,255,.18)";
+          c.fill();
+          c.beginPath();
+          c.arc(sx, sy, r + 4, 0, Math.PI * 2);
+          c.strokeStyle = "#00d9ff";
+          c.lineWidth = 2;
+          c.stroke();
+        } else if (sel || inPath) {
           c.beginPath();
           c.arc(sx, sy, r + 4, 0, Math.PI * 2);
           c.strokeStyle = "#00d9ff";

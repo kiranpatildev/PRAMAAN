@@ -84,7 +84,7 @@ only through the generic rule-gated emitter (`tasks.py:_post_build_alerts:60-96`
 Risk scoring is real math with persisted factor breakdowns (`risk.py:17-70`,
 weights sum to 1, `RiskReport` model, history endpoint). Copilot is regex-routed
 (`intents.py`): path/summary answers are **templated, `generated:False`**; only the
-generic branch can call Gemini (`gemini-2.0-flash`, evidence-grounded prompt,
+generic branch can call Gemini (`gemini-2.5-flash`, evidence-grounded prompt,
 `copilot/views.py:193-198`), degrading honestly to extractive keyword answers without
 a key. No role inference (financier/broker/kingpin — zero hits); "Top players" is a
 pagerank-sorted list with no dedicated dashboard card in the new UI.
@@ -137,7 +137,7 @@ ICJS progress frames reuse the socket transiently (not persisted — by design).
 | Risk | Weighted sum, 5 factors | Real + persisted `RiskReport` | Risk endpoint/history, alerts | Computed |
 | Anomalies | z-score/burst/density rules | Real statistics | Ephemeral response + alert fan-out; **no stored object** | Derived formulas |
 | Copilot path/summary | Postgres + Neo4j shortestPath + GDS templates | Real but **templated (`generated:False`)** | Chat UI with citations | n/a (no scores shown) |
-| Copilot generic | Gemini `gemini-2.0-flash` + `text-embedding-004` | Real iff `GEMINI_API_KEY` set; else honest extractive fallback | Chat UI, citations truncated to 4 × 90 chars | Retrieval scores dropped in UI |
+| Copilot generic | Gemini `gemini-2.5-flash` + `text-embedding-004` | Real iff `GEMINI_API_KEY` set; else honest extractive fallback | Chat UI, citations truncated to 4 × 90 chars | Retrieval scores dropped in UI |
 | Embeddings | Gemini 768-d, batched | Real iff key; else `None` vectors, keyword retrieval | `DocumentChunk` | n/a |
 | Transliteration/IndicBERT/translation | `indicxlit` import then `raise ImportError`; none else | ❌ Stub/absent | Nowhere | n/a |
 | Seed data NER | **Real** `extract_entities/relations` run over 3 hand-written statements | Real inference on synthetic text | Confirmed graph (demo dataset) | Same hardcoded constants |
@@ -296,3 +296,4 @@ real `SuspiciousPattern` engine are the two features that would most change what
 judge concludes about depth. This is a strong, honest investigation-workflow
 prototype with a real RBAC/audit spine — one sprint away from being demo-bulletproof,
 two from being analytically deep.
+

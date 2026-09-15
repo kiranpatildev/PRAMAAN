@@ -211,8 +211,9 @@ Intent router first (regex, no LLM): *path* ("how is X connected to Y",
 per-hop evidence; unconfirmed endpoints get a "confirm it first" answer.
 *Summary* → GDS + risk rollup, templated. *Generic* → hybrid retrieval
 (pgvector cosine top-k, then postgres full-text `websearch` rank to fill
-`RAG_TOP_K = 6`, sqlite icontains fallback) → Gemini `gemini-2.0-flash`
+`RAG_TOP_K = 6`, sqlite icontains fallback) → Gemini `gemini-2.5-flash`
 generation **grounded on numbered excerpts with cite-or-decline
 instructions**, or an honestly-labeled extractive answer without a key.
 Why RAG, not a chatbot: every claim must cite evidence, and the corpus is
 case-scoped per query — the model never freelances from training data.
+

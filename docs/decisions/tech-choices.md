@@ -26,7 +26,7 @@
   raw text cover digital documents; scanned pages degrade to
   `unavailable` without the ML stack instead of failing the pipeline.
 - **Gemini over a local LLM.** No GPU budget; `text-embedding-004` (768d)
-  + `gemini-2.0-flash` via the `google-genai` SDK (the older
+  + `gemini-2.5-flash` via the `google-genai` SDK (the older
   `google-generativeai` package is deprecated — the code already uses the
   new one). Key-optional by design: keyword retrieval + extractive answers
   keep the demo honest offline. RAG (not a chatbot) because every claim
@@ -48,3 +48,4 @@
 - **Dev-server frontend in the container** (`npm run dev`, not `next
   start`) + source-dir bind mounts: iteration speed over production
   fidelity, explicitly demo-grade.
+

@@ -133,6 +133,9 @@ export function MapTab({ caseId: cid, sho, canVerify, canEdit }: {
   const [searching, setSearching] = useState(false);
   const [fitSignal, setFitSignal] = useState(0);
   const [tileError, setTileError] = useState("");
+  const [tileWarn, setTileWarn] = useState("");
+  const [baseLabel, setBaseLabel] = useState("");
+  const [tileRetry, setTileRetry] = useState(0);
   const [drawing, setDrawing] = useState(false);
   const [picking, setPicking] = useState(false);
   const [moveMark, setMoveMark] = useState<{ entity_id: number; lng: number; lat: number } | null>(null);
@@ -430,6 +433,9 @@ export function MapTab({ caseId: cid, sho, canVerify, canEdit }: {
               setBuildingsAvail(false);
               setShowBuildings3d(false);
             }}
+            onBuildingsAvailable={() => {
+              setBuildingsAvail(true);
+            }}
             areaRing={area?.ring ?? null}
             clearSignal={clearSignal}
             onPinClick={setSelected}
@@ -458,7 +464,13 @@ export function MapTab({ caseId: cid, sho, canVerify, canEdit }: {
               router.push(`/cases/${cid}?tab=network&isolate=${encodeURIComponent(keys.join(","))}`);
             }}
             onTileError={(msg) => setTileError(msg)}
-            onTileOk={() => setTileError("")}
+            onTileOk={() => {
+              setTileError("");
+              setTileWarn("");
+            }}
+            onTileWarn={(msg) => setTileWarn(msg)}
+            onStyleLabel={(label) => setBaseLabel(label)}
+            tileRetrySignal={tileRetry}
           />
           <form
             className="absolute left-3 top-3 z-10 w-full max-w-[300px]"
@@ -527,9 +539,49 @@ export function MapTab({ caseId: cid, sho, canVerify, canEdit }: {
               ))}
             </select>
           </div>
+          {tileWarn && !tileError ? (
+            <div className="absolute inset-x-3 top-12 z-10 flex items-center gap-2 rounded-md border border-amber-500/30 bg-[#1a1407]/95 px-3 py-2">
+              <MapPin size={13} strokeWidth={1.8} aria-hidden className="shrink-0 text-amber-400" />
+              <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-amber-200" title={tileWarn}>
+                {tileWarn}
+              </p>
+              {baseLabel ? (
+                <span className="shrink-0 rounded border border-line-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-3">
+                  {baseLabel}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  setTileWarn("");
+                  setTileRetry((n) => n + 1);
+                }}
+                className="shrink-0 rounded border border-line-2 px-2 py-0.5 font-mono text-[10.5px] text-fg-2 hover:border-cyan hover:text-fg"
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {!tileWarn && !tileError && baseLabel ? (
+            <div className="absolute right-3 top-12 z-10 rounded border border-line bg-panel/90 px-2 py-1 font-mono text-[10px] text-fg-4">
+              {baseLabel}
+            </div>
+          ) : null}
           {tileError ? (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg p-6">
               <Empty icon={MapPin} title="Map unavailable" body={tileError} />
+              <div className="absolute bottom-6">
+                <Button
+                  variant="ghost"
+                  small
+                  onClick={() => {
+                    setTileError("");
+                    setTileRetry((n) => n + 1);
+                  }}
+                >
+                  Retry map
+                </Button>
+              </div>
             </div>
           ) : null}
           <div className="absolute inset-x-0 bottom-0 z-10 border-t border-line bg-panel px-[14px] py-[9px]">
@@ -881,7 +933,7 @@ export interface DrawArea {
   insideKeys: string[];
 }
 
-function MapCanvas({ pins, coords, styleUrl, selectedKey, searchMark, fitSignal, drawActive, showArea, showHeat, buildings3d, trail, frameIdx, picking, center, radiusKm, hits, focusPt, moveMark, captureSignal, areaRing, clearSignal, onPinClick, onViewDetails, onAreaFinish, onIsolate, onPickCenter, onMoveEnd, onCapture, onTileError, onTileOk, onBuildingsUnavailable }: {
+function MapCanvas({ pins, coords, styleUrl, selectedKey, searchMark, fitSignal, drawActive, showArea, showHeat, buildings3d, trail, frameIdx, picking, center, radiusKm, hits, focusPt, moveMark, captureSignal, areaRing, clearSignal, tileRetrySignal = 0, onPinClick, onViewDetails, onAreaFinish, onIsolate, onPickCenter, onMoveEnd, onCapture, onTileError, onTileOk, onTileWarn, onStyleLabel, onBuildingsUnavailable, onBuildingsAvailable }: {
   pins: Pin[];
   coords: Map<string, { lng: number; lat: number; conf: number }>;
   styleUrl: string;
@@ -899,8 +951,12 @@ function MapCanvas({ pins, coords, styleUrl, selectedKey, searchMark, fitSignal,
   onIsolate: (keys: string[]) => void;
   onTileError: (msg: string) => void;
   onTileOk: () => void;
+  onTileWarn?: (msg: string) => void;
+  onStyleLabel?: (label: string) => void;
+  tileRetrySignal?: number;
   buildings3d: boolean;
   onBuildingsUnavailable: () => void;
+  onBuildingsAvailable?: () => void;
   trail: TrailPoint[] | null;
   frameIdx: number;
   picking: boolean;
@@ -945,12 +1001,19 @@ function MapCanvas({ pins, coords, styleUrl, selectedKey, searchMark, fitSignal,
     onCapture: (blob: Blob | null) => void;
     onTileError: (msg: string) => void;
     onTileOk: () => void;
+    onTileWarn?: (msg: string) => void;
+    onStyleLabel?: (label: string) => void;
     onBuildingsUnavailable: () => void;
+    onBuildingsAvailable?: () => void;
     styleUrl: string;
-  }>({ pins, coords, selectedKey, searchMark, showArea, showHeat, buildings3d, trail, frameIdx, picking, center, radiusKm, hits, focusPt, moveMark, captureSignal, areaRing, onPinClick, onViewDetails, onAreaFinish, onIsolate, onPickCenter, onMoveEnd, onCapture, onTileError, onTileOk, onBuildingsUnavailable, styleUrl });
-  liveRef.current = { pins, coords, selectedKey, searchMark, showArea, showHeat, buildings3d, trail, frameIdx, picking, center, radiusKm, hits, focusPt, moveMark, captureSignal, areaRing, onPinClick, onViewDetails, onAreaFinish, onIsolate, onPickCenter, onMoveEnd, onCapture, onTileError, onTileOk, onBuildingsUnavailable, styleUrl };
+  }>({ pins, coords, selectedKey, searchMark, showArea, showHeat, buildings3d, trail, frameIdx, picking, center, radiusKm, hits, focusPt, moveMark, captureSignal, areaRing, onPinClick, onViewDetails, onAreaFinish, onIsolate, onPickCenter, onMoveEnd, onCapture, onTileError, onTileOk, onTileWarn, onStyleLabel, onBuildingsUnavailable, onBuildingsAvailable, styleUrl });
+  liveRef.current = { pins, coords, selectedKey, searchMark, showArea, showHeat, buildings3d, trail, frameIdx, picking, center, radiusKm, hits, focusPt, moveMark, captureSignal, areaRing, onPinClick, onViewDetails, onAreaFinish, onIsolate, onPickCenter, onMoveEnd, onCapture, onTileError, onTileOk, onTileWarn, onStyleLabel, onBuildingsUnavailable, onBuildingsAvailable, styleUrl };
   const fittedRef = useRef(false);
   const popupRef = useRef<import("maplibre-gl").Popup | null>(null);
+  // Generation guard: only the latest background upgrade may touch the map.
+  const upgradeGen = useRef(0);
+  // Set once the offline base is mounted; upgrades wait on it.
+  const mountedRef = useRef(false);
   // Stable click handler: setupLayers() re-runs on every style reload, and
   // off() only removes the exact reference — a fresh closure per call would
   // stack duplicate popups.
@@ -1198,9 +1261,10 @@ function MapCanvas({ pins, coords, styleUrl, selectedKey, searchMark, fitSignal,
         },
       });
     }
-    // 3D buildings ride the style's own openmaptiles vector source (all
-    // three styles carry it), so no new tile dependency. Buildings without
-    // render_height extrude to the documented 12 m default instead of flat.
+    // 3D buildings ride the style's own openmaptiles vector source
+    // (OpenFreeMap/Carto vector styles carry it; OSM-raster/offline do
+    // not). Buildings without render_height extrude to the documented
+    // 12 m default instead of flat.
     if (!map.getLayer("buildings-3d")) {
       try {
         map.addLayer(
@@ -1221,6 +1285,9 @@ function MapCanvas({ pins, coords, styleUrl, selectedKey, searchMark, fitSignal,
           },
           "pins-suspect"
         );
+        // Vector style confirmed (e.g. after a live-tile upgrade remount):
+        // the 3D toggle is usable again.
+        liveRef.current.onBuildingsAvailable?.();
       } catch {
         // Style without an openmaptiles/building source: 3D simply stays
         // unavailable (toggle shows it as such — see parent wiring).
@@ -1309,11 +1376,123 @@ function MapCanvas({ pins, coords, styleUrl, selectedKey, searchMark, fitSignal,
     syncData();
   }
 
-  // Mount once.
+  // Post-mount tile watchdog: single 404s are routine (edge tiles, high
+  // zoom); only sustained failure earns a banner — never a full overlay.
+  // Guarded on map identity so a replaced map's errors stay silent.
+  function watchTiles(map: import("maplibre-gl").Map, label: string) {
+    let errorCount = 0;
+    map.on("error", () => {
+      errorCount += 1;
+      if (errorCount < 4 || mapRef.current !== (map as never)) return;
+      liveRef.current.onTileWarn?.(`Base tiles degraded (${label}). Pins and data are unaffected.`);
+    });
+  }
+
+  function attachMap(map: import("maplibre-gl").Map, ml: typeof import("maplibre-gl")) {
+    mapRef.current = map as never;
+    map.addControl(new ml.NavigationControl({ showCompass: false }), "bottom-left");
+    setupLayers();
+    syncData();
+    watchTiles(map, liveRef.current.styleUrl);
+  }
+
+  // Background live-tile upgrade: race every candidate CONCURRENTLY in
+  // hidden probe maps (real `load` + tile-content verification), swap the
+  // first verified winner onto the visible map via a staging div (camera
+  // preserved, never blanked). Failures are console telemetry only until
+  // every candidate fails — then the honest offline end-state.
+  async function runUpgrade() {
+    const gen = ++upgradeGen.current;
+    // Wait for the offline mount (bounded; StrictMode-safe).
+    const t0 = Date.now();
+    while (!mountedRef.current && Date.now() - t0 < 8000) {
+      await new Promise((r) => setTimeout(r, 150));
+      if (gen !== upgradeGen.current) return;
+    }
+    const ml = mlRef.current;
+    if (!ml || !mountedRef.current || gen !== upgradeGen.current) return;
+    const { upgradeCandidates, raceCandidates, awaitMapLoad, createMapTransformRequest, logTile } = await import("@/lib/mapStyles");
+    if (gen !== upgradeGen.current) return;
+    const pref = liveRef.current.styleUrl;
+    const cands = upgradeCandidates(pref);
+    const start = Date.now();
+    const win = await raceCandidates(ml as never, cands, {
+      isCancelled: () => gen !== upgradeGen.current,
+      onProbe: (label, ok, ms) => logTile("candidate-probe", `${label} → ${ok ? "VERIFIED" : "failed"} in ${ms}ms`),
+    });
+    if (!win || gen !== upgradeGen.current) {
+      if (!win && gen === upgradeGen.current) {
+        // Every candidate failed: honest offline end-state (map already works).
+        liveRef.current.onStyleLabel?.("Offline base");
+        liveRef.current.onTileWarn?.("Live tiles unreachable — offline base. Pins and data are live.");
+        logTile("upgrade", `all ${cands.length} candidates failed in ${Date.now() - start}ms`);
+      }
+      return;
+    }
+
+    // Winner: swap onto the visible map, camera preserved without blanking.
+    const prev = mapRef.current as unknown as import("maplibre-gl").Map | null;
+    let center: [number, number] = [78.9, 21.1];
+    let zoom = 4;
+    try {
+      if (prev) {
+        const cc = prev.getCenter();
+        center = [cc.lng, cc.lat];
+        zoom = prev.getZoom();
+      }
+    } catch { /* ignore */ }
+
+    if (!divRef.current || gen !== upgradeGen.current) return;
+    const staging = document.createElement("div");
+    staging.style.cssText = "position:absolute;inset:0;width:100%;height:100%;";
+    divRef.current.appendChild(staging);
+
+    try {
+      const map = new ml.Map({
+        container: staging,
+        style: win.style as never,
+        center,
+        zoom,
+        transformRequest: createMapTransformRequest(),
+        attributionControl: { compact: true },
+      });
+      const loaded = await awaitMapLoad(map, 6000);
+      if (!loaded || gen !== upgradeGen.current) {
+        try { map.remove(); } catch { /* ignore */ }
+        try { staging.remove(); } catch { /* ignore */ }
+        // Just-proven style failed on the visible stage (flaky GL): stay on
+        // the working map and say so honestly.
+        liveRef.current.onTileWarn?.("Live tiles flickered — staying on the working base.");
+        return;
+      }
+
+      // Winner successfully loaded! Safely swap:
+      try { prev?.remove(); } catch { /* ignore */ }
+      if (divRef.current) {
+        Array.from(divRef.current.children).forEach((el) => {
+          if (el !== staging) el.remove();
+        });
+      }
+      attachMap(map, ml);
+      liveRef.current.onStyleLabel?.(`${win.label} · live`);
+      liveRef.current.onTileOk();
+      logTile("upgrade", `${win.label} live in ${Date.now() - start}ms`);
+      return;
+    } catch {
+      try { staging.remove(); } catch { /* ignore */ }
+      return;
+    }
+  }
+
+  // Mount once: OFFLINE base first (all-local, zero network). Pins, heat,
+  // trails and draw tools are interactive in <1s; live tiles upgrade in
+  // the background via runUpgrade().
   useEffect(() => {
     let dead = false;
-    let loadTimer: ReturnType<typeof setTimeout> | null = null;
     let ro: ResizeObserver | null = null;
+    const genRef = upgradeGen;
+    const mountRef = mountedRef;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     (async () => {
       let ml: typeof import("maplibre-gl");
       try {
@@ -1325,43 +1504,43 @@ function MapCanvas({ pins, coords, styleUrl, selectedKey, searchMark, fitSignal,
       if (dead || !divRef.current) return;
       mlRef.current = ml;
       try {
+        const { loadBoundaries, buildOfflineStyle, awaitMapLoad, createMapTransformRequest, logTile } = await import("@/lib/mapStyles");
+        const t0 = performance.now();
+        const bounds = await loadBoundaries();
+        if (dead || !divRef.current) return;
         const map = new ml.Map({
           container: divRef.current,
-          style: liveRef.current.styleUrl,
+          style: buildOfflineStyle(bounds) as never,
           center: [78.9, 21.1],
           zoom: 4,
+          transformRequest: createMapTransformRequest(),
           attributionControl: { compact: true },
         });
-        mapRef.current = map;
-        map.addControl(new ml.NavigationControl({ showCompass: false }), "bottom-left");
-        const fail = (msg: string) => {
-          if (!dead) liveRef.current.onTileError(msg);
-        };
-        map.on("error", () => fail("Map tiles failed to load (OpenFreeMap unreachable). Pins and data below are unaffected — retry shortly."));
-        map.on("load", () => {
-          if (loadTimer) clearTimeout(loadTimer);
-          if (dead) return;
-          liveRef.current.onTileOk();
-          setupLayers();
-          if (!fittedRef.current) {
-            fittedRef.current = true;
-            fitToPins();
-          }
-        });
-        loadTimer = setTimeout(() => {
-          fail("Map tiles are taking too long (OpenFreeMap unreachable?). Pins and data below are unaffected — retry shortly.");
-        }, 20000);
+        await awaitMapLoad(map, 4000);
+        if (dead) {
+          try { map.remove(); } catch { /* ignore */ }
+          return;
+        }
+        attachMap(map, ml);
+        mountedRef.current = true;
+        liveRef.current.onStyleLabel?.("Offline base · locating live tiles…");
+        if (!fittedRef.current) {
+          fittedRef.current = true;
+          fitToPins();
+        }
+        logTile("offline-mount", `${Math.round(performance.now() - t0)}ms`);
         ro = new ResizeObserver(() => {
-          try { map.resize(); } catch { /* ignore */ }
+          try { mapRef.current?.resize(); } catch { /* ignore */ }
         });
-        ro.observe(divRef.current);
+        if (divRef.current) ro.observe(divRef.current);
       } catch {
         if (!dead) liveRef.current.onTileError("Map failed to start. Check your connection and retry.");
       }
     })();
     return () => {
       dead = true;
-      if (loadTimer) clearTimeout(loadTimer);
+      genRef.current++;
+      mountRef.current = false;
       try { ro?.disconnect(); } catch { /* ignore */ }
       try { popupRef.current?.remove(); } catch { /* ignore */ }
       try { mapRef.current?.remove(); } catch { /* ignore */ }
@@ -1370,20 +1549,16 @@ function MapCanvas({ pins, coords, styleUrl, selectedKey, searchMark, fitSignal,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Style switches: reload style, then re-setup sources on load.
+  // Live-tile upgrade passes: preference switch or manual Retry re-runs the
+  // background loop. The visible (offline or live) map never blocks on it.
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.setStyle(styleUrl);
-    const ml = mlRef.current;
-    if (!ml) return;
-    const onReload = () => {
-      liveRef.current.onTileOk();
-      setupLayers();
+    const genRef = upgradeGen;
+    void runUpgrade();
+    return () => {
+      genRef.current++;
     };
-    map.once("load", onReload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [styleUrl]);
+  }, [tileRetrySignal, styleUrl]);
 
   // Data / selection / search / fit updates. syncData is ref-stable by
   // construction (reads only liveRef/mapRef), so it is not a dependency.

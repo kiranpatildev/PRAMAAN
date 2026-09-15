@@ -148,7 +148,7 @@ FIELD_ENCRYPTION_KEY = os.environ.get("FIELD_ENCRYPTION_KEY", "")
 # Gemini LLM / embeddings (Phase 6, key-optional). Without GEMINI_API_KEY the
 # copilot answers extractively over keyword retrieval (labeled, never faked).
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 RAG_TOP_K = int(os.environ.get("RAG_TOP_K", "6"))
 
 # External ICJS case-bundle API (mock in this build, real endpoint later).
